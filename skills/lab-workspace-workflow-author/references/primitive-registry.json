@@ -1,0 +1,12 @@
+{
+  "primitive_registry_version": "1.0",
+  "primitive_ids": [
+    "bca.blank_adjust@1",
+    "data.qc_range@1",
+    "math.linear_inverse@1",
+    "math.multiply@1",
+    "math.subtract@1",
+    "math.unit_convert@1",
+    "stats.linear_regression@1"
+  ]
+}

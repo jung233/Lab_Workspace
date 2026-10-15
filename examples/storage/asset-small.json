@@ -1,0 +1,6 @@
+{
+  "schema_version": "2.0", "asset_id": "asset-demo-01", "blob_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "bytes": 148120, "display_name": "bca-plate-original.csv", "kind": "raw", "parent_asset_id": null,
+  "integrity": {"threshold_bytes": 2147483648, "on_import": "full_sha256", "small_access": "full_sha256_each_logical_open", "large_access": "fast_metadata", "last_full_verified_at": "2026-10-15T10:00:00Z", "last_fast_check_at": null, "status": "verified"},
+  "deleted_at": null
+}

@@ -1,0 +1,246 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labworkspace.local/contracts/calculation-trace-v2.schema.json",
+  "title": "calculation-trace-v2.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "2.0"
+    },
+    "trace_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "calculation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "pack_ref": {
+      "type": "string"
+    },
+    "engine": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "executor_id": {
+          "type": "string"
+        },
+        "python_version": {
+          "type": "string"
+        },
+        "primitive_versions": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "platform": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "executor_id",
+        "python_version",
+        "primitive_versions",
+        "platform"
+      ]
+    },
+    "inputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1
+          },
+          "value": {
+            "type": [
+              "string",
+              "number",
+              "integer"
+            ]
+          },
+          "unit": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source_ref": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "key",
+          "value",
+          "unit"
+        ]
+      }
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "op": {
+            "type": "string"
+          },
+          "expression": {
+            "type": "string"
+          },
+          "substitution": {
+            "type": "string"
+          },
+          "inputs": {
+            "type": "object"
+          },
+          "intermediates": {
+            "type": "object"
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "key": {
+                "type": "string",
+                "minLength": 1
+              },
+              "value": {
+                "type": [
+                  "string",
+                  "number",
+                  "integer"
+                ]
+              },
+              "unit": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "source_ref": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "key",
+              "value",
+              "unit"
+            ]
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "seq",
+          "op",
+          "expression",
+          "substitution",
+          "inputs",
+          "intermediates",
+          "result",
+          "warnings"
+        ]
+      }
+    },
+    "outputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1
+          },
+          "value": {
+            "type": [
+              "string",
+              "number",
+              "integer"
+            ]
+          },
+          "unit": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source_ref": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "key",
+          "value",
+          "unit"
+        ]
+      }
+    },
+    "source_assets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "asset_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        },
+        "required": [
+          "asset_id",
+          "sha256"
+        ]
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "user_confirmed": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "schema_version",
+    "trace_id",
+    "calculation_id",
+    "pack_ref",
+    "engine",
+    "inputs",
+    "steps",
+    "outputs",
+    "source_assets",
+    "warnings",
+    "user_confirmed"
+  ]
+}

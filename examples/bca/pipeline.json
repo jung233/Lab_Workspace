@@ -1,0 +1,27 @@
+{
+  "schema_version": "2.0",
+  "pack_id": "org.labworkspace.calc.bca-standard-curve",
+  "version": "1.0.0",
+  "kind": "calculation",
+  "status": "draft",
+  "title": "BCA 标准曲线与样本浓度（合成数据示例）",
+  "inputs": [
+    {"key": "standards", "kind": "table", "required": true},
+    {"key": "sample_absorbance", "kind": "decimal", "unit": "AU", "required": true},
+    {"key": "blank_absorbance", "kind": "decimal", "unit": "AU", "required": true},
+    {"key": "dilution_factor", "kind": "decimal", "required": true}
+  ],
+  "pipeline": [
+    {"step_id": "adjust_standards", "op": "bca.blank_adjust@1", "inputs": {"standards": "$inputs.standards", "blank": "$inputs.blank_absorbance"}, "params": {}},
+    {"step_id": "sample_net", "op": "math.subtract@1", "inputs": {"a": "$inputs.sample_absorbance", "b": "$inputs.blank_absorbance"}, "params": {}},
+    {"step_id": "fit", "op": "stats.linear_regression@1", "inputs": {"standards": "$steps.adjust_standards.standards"}, "params": {}},
+    {"step_id": "sample_concentration", "op": "math.linear_inverse@1", "inputs": {"y": "$steps.sample_net.value", "slope": "$steps.fit.slope", "intercept": "$steps.fit.intercept"}, "params": {}},
+    {"step_id": "qc", "op": "data.qc_range@1", "inputs": {"x": "$steps.sample_concentration.value", "low": "$steps.fit.min_x", "high": "$steps.fit.max_x"}, "params": {}},
+    {"step_id": "diluted", "op": "math.multiply@1", "inputs": {"a": "$steps.sample_concentration.value", "b": "$inputs.dilution_factor"}, "params": {}},
+    {"step_id": "convert", "op": "math.unit_convert@1", "inputs": {"value": "$steps.diluted.value"}, "params": {"factor": "0.001", "from": "ug/mL", "to": "mg/mL"}}
+  ],
+  "outputs": [{"key": "protein_concentration", "from_ref": "$steps.convert.value", "unit": "mg/mL"}],
+  "quality_gates": [{"id": "bca_range", "expression_ref": "$steps.qc.in_range", "severity": "warn", "message": "样本计算浓度超出标准曲线范围，须人工审核"}],
+  "tests": [{"name": "synthetic_linear_example", "inputs": {"standards": [{"concentration": "0", "absorbance": "0.04"}, {"concentration": "200", "absorbance": "0.24"}, {"concentration": "400", "absorbance": "0.44"}], "sample_absorbance": "0.34", "blank_absorbance": "0.04", "dilution_factor": "5"}, "expected": {"protein_concentration": "1.5"}, "tolerance": {"protein_concentration": "0.0000001"}}],
+  "review": {"approved_by_user": false, "warnings": ["这是合成数据与线性标准曲线的流程演示，不代表任何具体 BCA 试剂盒/仪器 SOP 已被验证"]}
+}

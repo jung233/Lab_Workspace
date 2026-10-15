@@ -1,0 +1,185 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labworkspace.local/contracts/remote-storage-policy-v2.schema.json",
+  "title": "remote-storage-policy-v2.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "2.0"
+    },
+    "target_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "provider": {
+      "enum": [
+        "s3",
+        "onedrive"
+      ]
+    },
+    "encryption": {
+      "enum": [
+        "none",
+        "encrypt_metadata",
+        "encrypt_all",
+        "custom"
+      ]
+    },
+    "encrypt_metadata": {
+      "type": "boolean"
+    },
+    "encrypt_small_files": {
+      "type": "boolean"
+    },
+    "encrypt_large_files": {
+      "type": "boolean"
+    },
+    "key_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "large_file_threshold_bytes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "large_upload": {
+      "enum": [
+        "manual",
+        "wifi_only",
+        "automatic",
+        "off"
+      ]
+    },
+    "backup": {
+      "type": "boolean"
+    },
+    "sync": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "schema_version",
+    "target_id",
+    "provider",
+    "encryption",
+    "encrypt_metadata",
+    "encrypt_small_files",
+    "encrypt_large_files",
+    "key_id",
+    "large_file_threshold_bytes",
+    "large_upload",
+    "backup",
+    "sync"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "encryption": {
+            "const": "none"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "encrypt_metadata": {
+            "const": false
+          },
+          "encrypt_small_files": {
+            "const": false
+          },
+          "encrypt_large_files": {
+            "const": false
+          },
+          "key_id": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "encryption": {
+            "const": "encrypt_all"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "encrypt_metadata": {
+            "const": true
+          },
+          "encrypt_small_files": {
+            "const": true
+          },
+          "encrypt_large_files": {
+            "const": true
+          },
+          "key_id": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "encryption": {
+            "const": "encrypt_metadata"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "encrypt_metadata": {
+            "const": true
+          },
+          "key_id": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "anyOf": [
+          {
+            "properties": {
+              "encrypt_metadata": {
+                "const": true
+              }
+            }
+          },
+          {
+            "properties": {
+              "encrypt_small_files": {
+                "const": true
+              }
+            }
+          },
+          {
+            "properties": {
+              "encrypt_large_files": {
+                "const": true
+              }
+            }
+          }
+        ]
+      },
+      "then": {
+        "properties": {
+          "key_id": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  ]
+}

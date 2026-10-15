@@ -1,0 +1,11 @@
+{
+  "schema_version": "2.0", "job_id": "wb-roi-review-example", "source_asset_id": "asset-wb-original",
+  "source_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "mode": "scientific_quantification", "user_consented_to_upload": true,
+  "tools": [
+    {"tool": "inspect_metadata", "params": {"asset_id": "asset-wb-original"}, "requires_user_approval": false},
+    {"tool": "suggest_rois", "params": {"source": "multimodal_ai_suggestion"}, "requires_user_approval": true, "roi": {"x": 20, "y": 15, "width": 80, "height": 40}},
+    {"tool": "compute_roi_pixels", "params": {"roi_confirmation_ref": "must-be-set-by-user"}, "requires_user_approval": true, "roi": {"x": 20, "y": 15, "width": 80, "height": 40}}
+  ],
+  "never_overwrite_original": true, "use_generated_pixels_for_quantitation": false
+}

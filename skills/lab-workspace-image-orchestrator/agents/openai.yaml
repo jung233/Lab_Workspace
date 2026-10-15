@@ -1,0 +1,3 @@
+interface:
+  display_name: "Lab Workspace Image Orchestrator"
+  short_description: "Coordinate multimodal image review and auditable tools"

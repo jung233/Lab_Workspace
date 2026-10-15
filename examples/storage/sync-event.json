@@ -1,0 +1,5 @@
+{
+  "schema_version": "2.0", "vault_id": "vault-example", "device_id": "windows-device-01", "seq": 5, "lamport": 7,
+  "event_id": "event-example-005", "entity_kind": "step_execution", "entity_id": "step-001", "base_revision": 2,
+  "action": "patch", "payload": {"state": "completed", "completed_at_utc": "2026-10-15T11:00:00Z"}, "sha_refs": [], "created_at_utc": "2026-10-15T11:00:00Z"
+}

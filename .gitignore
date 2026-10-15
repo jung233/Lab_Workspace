@@ -1,0 +1,98 @@
+# Generated combined document; keep docs/ chapters and the generator in Git.
+/Lab_Workspace_V2.0_Complete_Development_Document.md
+
+# Generated distributions and build outputs.
+/dist/
+build/
+*.egg-info/
+.eggs/
+
+# Python environments, bytecode and tool caches.
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+coverage/
+.ipynb_checkpoints/
+
+# Flutter / Dart generated state. Keep pubspec.lock and other lockfiles.
+.dart_tool/
+.pub-cache/
+.pub/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Android / Gradle local state and signing material.
+.gradle/
+.kotlin/
+local.properties
+key.properties
+*.jks
+*.keystore
+
+# iOS / Xcode and Flutter platform outputs.
+Pods/
+.symlinks/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+**/Flutter/ephemeral/
+**/Flutter/Generated.xcconfig
+**/Flutter/flutter_export_environment.sh
+**/Flutter/App.framework/
+**/Flutter/Flutter.framework/
+
+# Windows Flutter generated files.
+**/windows/flutter/ephemeral/
+
+# Local secrets; retain shareable environment templates.
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+*.pem
+*.p12
+*.pfx
+
+# Runtime databases. SQL migrations under db/ remain versioned.
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite-journal
+*.sqlite3-wal
+*.sqlite3-shm
+*.sqlite3-journal
+*.db-wal
+*.db-shm
+*.db-journal
+
+# Local Vaults, assets, exports and backup data (root paths only).
+/Vaults/
+/LabWorkspaceVault-*/
+/store/
+/workspace_exports/
+/backup/
+/logs/
+*.log
+
+# Editor, OS and temporary files. Shared editor settings stay versioned.
+.idea/
+.vs/
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo
+*~
+*.tmp
+*.bak

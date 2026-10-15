@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labworkspace.local/contracts/image-tool-plan-v2.schema.json",
+  "title": "image-tool-plan-v2.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "2.0"
+    },
+    "job_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_asset_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "mode": {
+      "enum": [
+        "image_documentation",
+        "report_extraction",
+        "scientific_quantification",
+        "presentation_edit"
+      ]
+    },
+    "user_consented_to_upload": {
+      "type": "boolean"
+    },
+    "tools": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "tool": {
+            "enum": [
+              "inspect_metadata",
+              "create_model_preview",
+              "suggest_rois",
+              "render_overlay",
+              "crop_derived",
+              "compute_roi_pixels",
+              "save_derived_asset",
+              "export_image_report"
+            ]
+          },
+          "params": {
+            "type": "object"
+          },
+          "requires_user_approval": {
+            "type": "boolean"
+          },
+          "roi": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "x": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "y": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "width": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "height": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                },
+                "required": [
+                  "x",
+                  "y",
+                  "width",
+                  "height"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "tool",
+          "params",
+          "requires_user_approval"
+        ]
+      }
+    },
+    "never_overwrite_original": {
+      "const": true
+    },
+    "use_generated_pixels_for_quantitation": {
+      "const": false
+    }
+  },
+  "required": [
+    "schema_version",
+    "job_id",
+    "source_asset_id",
+    "source_sha256",
+    "mode",
+    "user_consented_to_upload",
+    "tools",
+    "never_overwrite_original",
+    "use_generated_pixels_for_quantitation"
+  ]
+}

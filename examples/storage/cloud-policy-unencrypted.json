@@ -1,0 +1,5 @@
+{
+  "schema_version": "2.0", "target_id": "onedrive-recoverable-demo", "provider": "onedrive", "encryption": "none",
+  "encrypt_metadata": false, "encrypt_small_files": false, "encrypt_large_files": false, "key_id": null,
+  "large_file_threshold_bytes": 2147483648, "large_upload": "manual", "backup": true, "sync": true
+}

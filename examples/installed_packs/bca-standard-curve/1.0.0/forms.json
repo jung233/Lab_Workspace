@@ -1,0 +1,12 @@
+{
+  "schema_version": "2.0",
+  "title": "BCA标准曲线（样例）",
+  "fields": [
+    {"key": "standards", "label": "标准孔（浓度和吸光度）", "widget": "table", "required": true},
+    {"key": "sample_absorbance", "label": "样本吸光度", "widget": "decimal", "unit": "AU", "required": true},
+    {"key": "blank_absorbance", "label": "空白吸光度", "widget": "decimal", "unit": "AU", "required": true},
+    {"key": "dilution_factor", "label": "稀释倍数", "widget": "decimal", "required": true}
+  ],
+  "outputs": [{"key": "protein_concentration", "label": "蛋白浓度", "unit": "mg/mL", "show_trace_button": true}],
+  "warning": "应根据真实试剂与 SOP 验证拟合区间、空白修正和复孔统计。"
+}

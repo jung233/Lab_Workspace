@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labworkspace.local/contracts/asset-metadata-v2.schema.json",
+  "title": "asset-metadata-v2.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "2.0"
+    },
+    "asset_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "blob_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "bytes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "display_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "kind": {
+      "enum": [
+        "raw",
+        "derived",
+        "report",
+        "thumbnail",
+        "export"
+      ]
+    },
+    "parent_asset_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "threshold_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "on_import": {
+          "const": "full_sha256"
+        },
+        "small_access": {
+          "const": "full_sha256_each_logical_open"
+        },
+        "large_access": {
+          "enum": [
+            "fast_metadata",
+            "full_sha256_each_open"
+          ]
+        },
+        "last_full_verified_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "last_fast_check_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "enum": [
+            "verified",
+            "quick_checked",
+            "overdue",
+            "mismatch",
+            "missing",
+            "pending"
+          ]
+        }
+      },
+      "required": [
+        "threshold_bytes",
+        "on_import",
+        "small_access",
+        "large_access",
+        "status"
+      ]
+    },
+    "deleted_at": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "schema_version",
+    "asset_id",
+    "blob_sha256",
+    "bytes",
+    "display_name",
+    "kind",
+    "parent_asset_id",
+    "integrity",
+    "deleted_at"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "schema_version": "2.0", "protocol_id": "org.labworkspace.protocol.bca-wb-demo", "version": "1.0.0",
+  "title": "BCA 到 WB：参数化示例 Protocol（待审核）", "status": "draft", "sources": [],
+  "variables": [
+    {"key": "target_protein_mass", "kind": "decimal", "unit": "ug", "required": true},
+    {"key": "sample_concentration", "kind": "decimal", "unit": "ug/uL", "required": true}
+  ],
+  "steps": [
+    {"step_id": "register_samples", "kind": "sample", "title": "登记实验组及样本处理", "instructions": "记录实际分组、处理浓度、时间和样本来源", "depends_on": [], "duration": {"expected_seconds": null, "source": "unknown"}, "human_gate": true},
+    {"step_id": "measure_bca", "kind": "measure", "title": "记录 BCA 原始吸光度", "instructions": "导入仪器原始文件或经审核的报告数值", "depends_on": ["register_samples"], "duration": {"expected_seconds": null, "source": "unknown"}, "human_gate": true},
+    {"step_id": "calculate_bca", "kind": "calculate", "title": "执行 BCA 浓度计算包", "instructions": "查看标准曲线与原始计算，确认结果", "depends_on": ["measure_bca"], "duration": {"expected_seconds": null, "source": "unknown"}, "tool_pack_ref": "org.labworkspace.calc.bca-standard-curve@1.0.0", "human_gate": true},
+    {"step_id": "calculate_loading", "kind": "calculate", "title": "根据已确认浓度计算 WB 上样量", "instructions": "目标质量/浓度并结合上样总量的其它约束", "depends_on": ["calculate_bca"], "duration": {"expected_seconds": null, "source": "unknown"}, "human_gate": true},
+    {"step_id": "record_wb_image", "kind": "image", "title": "导入 WB 原始图像", "instructions": "不覆盖原件；AI 候选 ROI 须人工确认", "depends_on": ["calculate_loading"], "duration": {"expected_seconds": null, "source": "unknown"}, "human_gate": true}
+  ],
+  "review": {"approved_by_user": false, "warnings": ["示例不包含真实实验试剂、操作时长或方法验证，不能直接作为临床/科研 SOP"]}
+}

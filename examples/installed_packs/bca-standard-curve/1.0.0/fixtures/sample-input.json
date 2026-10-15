@@ -1,0 +1,8 @@
+{
+  "standards": [
+    {"concentration": "0", "absorbance": "0.04"},
+    {"concentration": "200", "absorbance": "0.24"},
+    {"concentration": "400", "absorbance": "0.44"}
+  ],
+  "sample_absorbance": "0.34", "blank_absorbance": "0.04", "dilution_factor": "5"
+}

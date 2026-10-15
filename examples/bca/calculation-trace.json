@@ -1,0 +1,234 @@
+{
+  "schema_version": "2.0",
+  "trace_id": "example-trace-001",
+  "calculation_id": "example-calculation-001",
+  "pack_ref": "org.labworkspace.calc.bca-standard-curve@1.0.0",
+  "engine": {
+    "executor_id": "trusted-stdlib-demo",
+    "python_version": "3.13.5",
+    "primitive_versions": {
+      "bca.blank_adjust@1": "1",
+      "data.qc_range@1": "1",
+      "math.linear_inverse@1": "1",
+      "math.multiply@1": "1",
+      "math.subtract@1": "1",
+      "math.unit_convert@1": "1",
+      "stats.linear_regression@1": "1"
+    },
+    "platform": "Linux"
+  },
+  "inputs": [
+    {
+      "key": "standards",
+      "value": "[{\"concentration\": \"0\", \"absorbance\": \"0.04\"}, {\"concentration\": \"200\", \"absorbance\": \"0.24\"}, {\"concentration\": \"400\", \"absorbance\": \"0.44\"}]",
+      "unit": null
+    },
+    {
+      "key": "sample_absorbance",
+      "value": "0.34",
+      "unit": null
+    },
+    {
+      "key": "blank_absorbance",
+      "value": "0.04",
+      "unit": null
+    },
+    {
+      "key": "dilution_factor",
+      "value": "5",
+      "unit": null
+    }
+  ],
+  "steps": [
+    {
+      "seq": 1,
+      "op": "bca.blank_adjust@1",
+      "expression": "y_i_corrected = y_i - blank",
+      "substitution": "each absorbance minus 0.04",
+      "inputs": {
+        "standards": [
+          {
+            "concentration": "0",
+            "absorbance": "0.04"
+          },
+          {
+            "concentration": "200",
+            "absorbance": "0.24"
+          },
+          {
+            "concentration": "400",
+            "absorbance": "0.44"
+          }
+        ],
+        "blank": "0.04"
+      },
+      "intermediates": {
+        "corrected_rows": [
+          {
+            "concentration": "0",
+            "absorbance": "0.00"
+          },
+          {
+            "concentration": "200",
+            "absorbance": "0.20"
+          },
+          {
+            "concentration": "400",
+            "absorbance": "0.40"
+          }
+        ]
+      },
+      "result": {
+        "key": "adjust_standards",
+        "value": "3",
+        "unit": null
+      },
+      "warnings": []
+    },
+    {
+      "seq": 2,
+      "op": "math.subtract@1",
+      "expression": "a-b",
+      "substitution": "0.34-0.04",
+      "inputs": {
+        "a": "0.34",
+        "b": "0.04"
+      },
+      "intermediates": {},
+      "result": {
+        "key": "sample_net",
+        "value": "0.30",
+        "unit": "AU"
+      },
+      "warnings": []
+    },
+    {
+      "seq": 3,
+      "op": "stats.linear_regression@1",
+      "expression": "slope=Sxy/Sxx;intercept=ybar-slope*xbar;R2=1-RSS/SST",
+      "substitution": "slope=80.00/80000; intercept=0.20-0.001*200",
+      "inputs": {
+        "standards": [
+          {
+            "concentration": "0",
+            "absorbance": "0.00"
+          },
+          {
+            "concentration": "200",
+            "absorbance": "0.20"
+          },
+          {
+            "concentration": "400",
+            "absorbance": "0.40"
+          }
+        ]
+      },
+      "intermediates": {
+        "xbar": "200",
+        "ybar": "0.20",
+        "sxx": "80000",
+        "sxy": "80.00",
+        "rss": "0.000000",
+        "sst": "0.0800",
+        "r_squared": "1.00",
+        "intercept": "0.000",
+        "residuals": [
+          "0.000",
+          "0.000",
+          "0.000"
+        ]
+      },
+      "result": {
+        "key": "fit",
+        "value": "0.001",
+        "unit": "AU/(ug/mL)"
+      },
+      "warnings": []
+    },
+    {
+      "seq": 4,
+      "op": "math.linear_inverse@1",
+      "expression": "x=(y-intercept)/slope",
+      "substitution": "(0.30-0.000)/0.001",
+      "inputs": {
+        "y": "0.30",
+        "slope": "0.001",
+        "intercept": "0.000"
+      },
+      "intermediates": {},
+      "result": {
+        "key": "sample_concentration",
+        "value": "300",
+        "unit": "ug/mL"
+      },
+      "warnings": []
+    },
+    {
+      "seq": 5,
+      "op": "data.qc_range@1",
+      "expression": "low <= value <= high",
+      "substitution": "0 <= 300 <= 400",
+      "inputs": {
+        "x": "300",
+        "low": "0",
+        "high": "400"
+      },
+      "intermediates": {},
+      "result": {
+        "key": "qc",
+        "value": "true",
+        "unit": null
+      },
+      "warnings": []
+    },
+    {
+      "seq": 6,
+      "op": "math.multiply@1",
+      "expression": "a*b",
+      "substitution": "300*5",
+      "inputs": {
+        "a": "300",
+        "b": "5"
+      },
+      "intermediates": {},
+      "result": {
+        "key": "diluted",
+        "value": "1500",
+        "unit": "ug/mL"
+      },
+      "warnings": []
+    },
+    {
+      "seq": 7,
+      "op": "math.unit_convert@1",
+      "expression": "value*unit_conversion_factor",
+      "substitution": "1500*0.001",
+      "inputs": {
+        "value": "1500"
+      },
+      "intermediates": {
+        "from": "ug/mL",
+        "to": "mg/mL",
+        "factor": "0.001"
+      },
+      "result": {
+        "key": "convert",
+        "value": "1.500",
+        "unit": "mg/mL"
+      },
+      "warnings": []
+    }
+  ],
+  "outputs": [
+    {
+      "key": "protein_concentration",
+      "value": "1.500",
+      "unit": "mg/mL"
+    }
+  ],
+  "source_assets": [],
+  "warnings": [
+    "demo-engine-sha256=8fa9d295b1e96f2f923239dd53ddf785b165821c3d592517fc66f39136c79a04"
+  ],
+  "user_confirmed": false
+}

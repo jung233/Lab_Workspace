@@ -1,0 +1,42 @@
+{
+  "schema_version": "2.0",
+  "pack_id": "org.labworkspace.calc.bca-standard-curve",
+  "version": "1.0.0",
+  "kind": "calculation",
+  "title": "BCA 标准曲线与样本浓度（合成数据示例）",
+  "requires_engine": "2.0",
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "937850535bd0b0fe435b9dc5d2ed649fdbb8681efed5472e9c33110f109eb587"
+    },
+    {
+      "path": "fixtures/expected-output.json",
+      "sha256": "31c20183b16a689d4512cfdf328d82d9b5001b79a98833d881e5200e570ba4fc"
+    },
+    {
+      "path": "fixtures/sample-input.json",
+      "sha256": "df69f57104a21dbae418f87aff607aaa213bb63a7758a88360f44ae79991a6a4"
+    },
+    {
+      "path": "forms.json",
+      "sha256": "fed35e26879c68e42e10ad21eb0f538aa694e73ee8ab5493f723ef57865e94af"
+    },
+    {
+      "path": "pipeline.json",
+      "sha256": "756971c7ae4661af5c9600e00ebd068a0136bbdb76c1dd5cb79e20dc60f8e16b"
+    }
+  ],
+  "permission_level": "declarative_only",
+  "required_primitives": [
+    "bca.blank_adjust@1",
+    "data.qc_range@1",
+    "math.linear_inverse@1",
+    "math.multiply@1",
+    "math.subtract@1",
+    "math.unit_convert@1",
+    "stats.linear_regression@1"
+  ],
+  "signed_by": null,
+  "author": "Lab Workspace V2.0 sample pack"
+}
