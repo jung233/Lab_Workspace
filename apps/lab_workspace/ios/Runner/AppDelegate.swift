@@ -52,9 +52,12 @@ import UserNotifications
           if call.method == "probe" {
             response = LabCalculationPythonRunner.probeJSONRPC()
           } else {
-            var error: NSError?
-            response = LabCalculationPythonRunner.handleJSONRPC(requestJSON, error: &error)
-              ?? "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32010,\"message\":\"TRUSTED_PYTHON_RUNTIME_UNAVAILABLE\"}}"
+            do {
+              response = try LabCalculationPythonRunner.handleJSONRPC(requestJSON)
+                ?? "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32010,\"message\":\"TRUSTED_PYTHON_RUNTIME_UNAVAILABLE\"}}"
+            } catch {
+              response = "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32010,\"message\":\"TRUSTED_PYTHON_RUNTIME_UNAVAILABLE\"}}"
+            }
           }
           DispatchQueue.main.async { result(response) }
         }

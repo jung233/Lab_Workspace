@@ -43,9 +43,9 @@ const pythonMobileEntrySourceSha256 =
 const androidPythonRunnerSourceSha256 =
     '2bb2cd7151a8de1bc7e5e2c21c6a2185d0fc0628286d99427cf0c005fd23bf5f';
 const iosPythonRunnerSourceSha256 =
-    '2526de119016b6c3bbaf92180911bf1355e0da21c4ae70e468f844235a589444';
+    'b5b2643d1be8abf13620ee38e2596531663ddffaa1a780736edf27c1a30e6068';
 const androidPythonPreparationSourceSha256 =
-    '7c310469e9c40886151e6a86aadbf0a7e25b63a25074fe07cd876084fea36ff6';
+    '67d51e31098d6499b8e61f708d6f58ad4aeb4ce7989c9926b3506a3a75615b20';
 const iosPythonPreparationSourceSha256 =
     '644b229f1095ab9952771bd44810a5207dfa467c7831e2e987027cecfbf8393a';
 
