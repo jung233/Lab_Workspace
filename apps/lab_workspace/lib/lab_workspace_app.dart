@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:lab_core/lab_core.dart';
 
+import 'app_theme.dart';
 import 'platform/workspace_services.dart';
 import 'screens/workspace_shell.dart';
 
@@ -32,10 +33,7 @@ class _LabWorkspaceAppState extends State<LabWorkspaceApp> {
     return MaterialApp(
       title: 'Lab Workspace',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF176B67)),
-        useMaterial3: true,
-      ),
+      theme: buildLabWorkspaceTheme(),
       home: WorkspaceShell(core: widget.core, services: widget.services),
     );
   }

@@ -7,6 +7,7 @@ import 'package:lab_core/lab_core.dart';
 
 import '../platform/secure_secret_store.dart';
 import '../src/ai_image/python_json_rpc_process.dart';
+import '../widgets/workspace_ui.dart';
 
 class ProviderSettingsPage extends StatefulWidget {
   const ProviderSettingsPage({required this.core, super.key});
@@ -31,9 +32,24 @@ class _ProviderSettingsPageState extends State<ProviderSettingsPage> {
   void initState() {
     super.initState();
     final configured = _readWorkerConfig();
-    _pythonExecutable = TextEditingController(text: configured['python_executable'] ?? Platform.environment['LAB_WORKSPACE_PYTHON'] ?? '');
-    _aiSdkScript = TextEditingController(text: configured['ai_sdk_script'] ?? Platform.environment['LAB_WORKSPACE_AI_SDK_BRIDGE'] ?? '');
-    _calculationScript = TextEditingController(text: configured['calculation_rpc_script'] ?? Platform.environment['LAB_WORKSPACE_CALCULATION_RPC'] ?? '');
+    _pythonExecutable = TextEditingController(
+      text:
+          configured['python_executable'] ??
+          Platform.environment['LAB_WORKSPACE_PYTHON'] ??
+          '',
+    );
+    _aiSdkScript = TextEditingController(
+      text:
+          configured['ai_sdk_script'] ??
+          Platform.environment['LAB_WORKSPACE_AI_SDK_BRIDGE'] ??
+          '',
+    );
+    _calculationScript = TextEditingController(
+      text:
+          configured['calculation_rpc_script'] ??
+          Platform.environment['LAB_WORKSPACE_CALCULATION_RPC'] ??
+          '',
+    );
     _reload();
   }
 
@@ -46,12 +62,20 @@ class _ProviderSettingsPageState extends State<ProviderSettingsPage> {
   }
 
   Map<String, String> _readWorkerConfig() {
-    final rows = widget.core.database.query('SELECT value_json FROM workspace_settings WHERE setting_key=?', ['trusted_python_workers']);
+    final rows = widget.core.database.query(
+      'SELECT value_json FROM workspace_settings WHERE setting_key=?',
+      ['trusted_python_workers'],
+    );
     if (rows.isEmpty || rows.single['value_json'] is! String) return const {};
     try {
       final decoded = jsonDecode(rows.single['value_json'] as String);
       if (decoded is! Map) return const {};
-      return decoded.map((key, value) => MapEntry(key.toString(), value is String ? value : '')).cast<String, String>();
+      return decoded
+          .map(
+            (key, value) =>
+                MapEntry(key.toString(), value is String ? value : ''),
+          )
+          .cast<String, String>();
     } on Object {
       return const {};
     }
@@ -59,20 +83,30 @@ class _ProviderSettingsPageState extends State<ProviderSettingsPage> {
 
   Future<void> _saveWorkerConfig() async {
     if (!Platform.isWindows) {
-      setState(() => _workerStatus = 'Windows Python/Conda 进程配置仅在 Windows 生效；移动端必须使用签名随包交付的可信运行时。');
+      setState(
+        () => _workerStatus =
+            'Windows Python/Conda 进程配置仅在 Windows 生效；移动端必须使用签名随包交付的可信运行时。',
+      );
       return;
     }
     final python = _pythonExecutable.text.trim();
     final aiScript = _aiSdkScript.text.trim();
     final calculation = _calculationScript.text.trim();
     final pythonName = File(python).uri.pathSegments.last.toLowerCase();
-    if (python.isEmpty || aiScript.isEmpty || !{'python.exe', 'python3.exe'}.contains(pythonName) ||
+    if (python.isEmpty ||
+        aiScript.isEmpty ||
+        !{'python.exe', 'python3.exe'}.contains(pythonName) ||
         File(aiScript).uri.pathSegments.last != 'ai_provider_sdk_bridge.py' ||
-        (calculation.isNotEmpty && File(calculation).uri.pathSegments.last != 'calculation_rpc.py')) {
-      setState(() => _workerStatus = '请填写 Python executable、ai_provider_sdk_bridge.py；Calculation RPC 只能填 calculation_rpc.py。');
+        (calculation.isNotEmpty &&
+            File(calculation).uri.pathSegments.last != 'calculation_rpc.py')) {
+      setState(
+        () => _workerStatus =
+            '请填写 Python executable、ai_provider_sdk_bridge.py；Calculation RPC 只能填 calculation_rpc.py。',
+      );
       return;
     }
-    if (!await File(python).exists() || !await File(aiScript).exists() ||
+    if (!await File(python).exists() ||
+        !await File(aiScript).exists() ||
         (calculation.isNotEmpty && !await File(calculation).exists())) {
       setState(() => _workerStatus = '配置文件路径不存在。请使用绝对路径并确认文件受信任。');
       return;
@@ -86,14 +120,23 @@ class _ProviderSettingsPageState extends State<ProviderSettingsPage> {
       '''INSERT INTO workspace_settings(setting_key,value_json,revision,updated_at_utc)
          VALUES(?,?,1,?) ON CONFLICT(setting_key) DO UPDATE SET value_json=excluded.value_json,
          revision=workspace_settings.revision+1,updated_at_utc=excluded.updated_at_utc''',
-      ['trusted_python_workers', value, DateTime.now().toUtc().toIso8601String()],
+      [
+        'trusted_python_workers',
+        value,
+        DateTime.now().toUtc().toIso8601String(),
+      ],
     );
-    if (mounted) setState(() => _workerStatus = '本地 runner 配置已保存；路径不是凭据，不会同步或备份。');
+    if (mounted) {
+      setState(() => _workerStatus = '本地 runner 配置已保存；路径不是凭据，不会同步或备份。');
+    }
   }
 
   Future<void> _probePythonWorker() async {
     if (!Platform.isWindows) {
-      setState(() => _workerStatus = '此平台不支持任意 Python 进程；移动端 trusted runtime 由原生签名构建提供。');
+      setState(
+        () =>
+            _workerStatus = '此平台不支持任意 Python 进程；移动端 trusted runtime 由原生签名构建提供。',
+      );
       return;
     }
     try {
@@ -102,12 +145,20 @@ class _ProviderSettingsPageState extends State<ProviderSettingsPage> {
         scriptPath: _aiSdkScript.text.trim(),
       ).call('ai.self_test', const {}, timeoutSeconds: 15);
       if (mounted) {
-        setState(() => _workerStatus = result['ok'] == true
-            ? '本地 OpenAI SDK worker 可用（${result['version']}）。此检查不发起网络请求。'
-            : 'Python worker 启动成功，但未安装 openai SDK（${result['code'] ?? 'unknown'}）。');
+        setState(
+          () => _workerStatus = result['ok'] == true
+              ? '本地 OpenAI SDK worker 可用（${result['version']}）。此检查不发起网络请求。'
+              : 'Python worker 启动成功，但未安装 openai SDK（${result['code'] ?? 'unknown'}）。',
+        );
       }
     } on Object catch (error) {
-      if (mounted) setState(() => _workerStatus = error is AiProviderException ? '${error.code}: ${error.message}' : '本地 worker 不可用；请核对 Python 与脚本路径。');
+      if (mounted) {
+        setState(
+          () => _workerStatus = error is AiProviderException
+              ? '${error.code}: ${error.message}'
+              : '本地 worker 不可用；请核对 Python 与脚本路径。',
+        );
+      }
     }
   }
 
@@ -304,17 +355,15 @@ class _ProviderSettingsPageState extends State<ProviderSettingsPage> {
 
   @override
   Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                'AI Provider',
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
-            ),
+        padding: const EdgeInsets.fromLTRB(28, 22, 28, 8),
+        child: WorkspacePageHeader(
+          title: 'AI 模型设置',
+          subtitle: 'Provider 配置保存在本机；每次探测和模型上传仍需单独同意。',
+          icon: Icons.tune_outlined,
+          actions: [
             IconButton(
               onPressed: _loading ? null : _reload,
               tooltip: '刷新',
@@ -336,22 +385,57 @@ class _ProviderSettingsPageState extends State<ProviderSettingsPage> {
         actions: [SizedBox.shrink()],
       ),
       Card(
-        margin: const EdgeInsets.all(12),
+        margin: const EdgeInsets.fromLTRB(18, 12, 18, 12),
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Windows trusted Python / Conda', style: Theme.of(context).textTheme.titleMedium),
-            const Text('填写并保存绝对路径；SDK worker 用 ai.self_test 本地探测，不发网络请求。图片/科学计算 RPC 使用独立脚本。实际 provider 探测在 Lab Workspace AI 页面完成并会要求上传 consent。'),
-            TextField(controller: _pythonExecutable, decoration: const InputDecoration(labelText: 'python.exe / Conda python.exe 绝对路径')),
-            TextField(controller: _aiSdkScript, decoration: const InputDecoration(labelText: 'ai_provider_sdk_bridge.py 绝对路径')),
-            TextField(controller: _calculationScript, decoration: const InputDecoration(labelText: 'calculation_rpc.py 绝对路径（可选）')),
-            Wrap(spacing: 8, children: [
-              FilledButton.tonal(onPressed: _saveWorkerConfig, child: const Text('保存 Runner 配置')),
-              OutlinedButton(onPressed: _probePythonWorker, child: const Text('本地探测 OpenAI SDK')),
-            ]),
-            if (_workerStatus.isNotEmpty) SelectableText(_workerStatus),
-            if (!Platform.isWindows) const Text('当前为非 Windows 平台。任意 Python 运行时配置已禁用；Android/iOS 需使用随应用签名交付的受信运行时。'),
-          ]),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Windows trusted Python / Conda',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const Text(
+                '填写并保存绝对路径；SDK worker 用 ai.self_test 本地探测，不发网络请求。图片/科学计算 RPC 使用独立脚本。实际 provider 探测在 Lab Workspace AI 页面完成并会要求上传 consent。',
+              ),
+              TextField(
+                controller: _pythonExecutable,
+                decoration: const InputDecoration(
+                  labelText: 'python.exe / Conda python.exe 绝对路径',
+                ),
+              ),
+              TextField(
+                controller: _aiSdkScript,
+                decoration: const InputDecoration(
+                  labelText: 'ai_provider_sdk_bridge.py 绝对路径',
+                ),
+              ),
+              TextField(
+                controller: _calculationScript,
+                decoration: const InputDecoration(
+                  labelText: 'calculation_rpc.py 绝对路径（可选）',
+                ),
+              ),
+              Wrap(
+                spacing: 8,
+                children: [
+                  FilledButton.tonal(
+                    onPressed: _saveWorkerConfig,
+                    child: const Text('保存 Runner 配置'),
+                  ),
+                  OutlinedButton(
+                    onPressed: _probePythonWorker,
+                    child: const Text('本地探测 OpenAI SDK'),
+                  ),
+                ],
+              ),
+              if (_workerStatus.isNotEmpty) SelectableText(_workerStatus),
+              if (!Platform.isWindows)
+                const Text(
+                  '当前为非 Windows 平台。任意 Python 运行时配置已禁用；Android/iOS 需使用随应用签名交付的受信运行时。',
+                ),
+            ],
+          ),
         ),
       ),
       if (_loading) const LinearProgressIndicator(),
@@ -362,7 +446,11 @@ class _ProviderSettingsPageState extends State<ProviderSettingsPage> {
         ),
       Expanded(
         child: _profiles.isEmpty
-            ? const Center(child: Text('尚未配置 Provider。'))
+            ? const WorkspaceEmptyState(
+                icon: Icons.cloud_off_outlined,
+                title: '尚未配置 Provider',
+                description: '添加模型地址、模型 ID 和安全存储凭据后即可使用 AI 草稿功能。',
+              )
             : ListView.builder(
                 itemCount: _profiles.length,
                 itemBuilder: (context, index) {

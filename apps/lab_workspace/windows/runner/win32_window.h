@@ -20,10 +20,11 @@ class Win32Window {
   virtual bool OnCreate();
   virtual void OnDestroy();
   virtual void OnSize(unsigned int width, unsigned int height);
+  virtual LRESULT MessageHandler(HWND window, UINT message, WPARAM wparam,
+                                 LPARAM lparam);
 
  private:
   static LRESULT CALLBACK WndProc(HWND window, UINT message, WPARAM wparam, LPARAM lparam);
-  LRESULT MessageHandler(HWND window, UINT message, WPARAM wparam, LPARAM lparam);
   HWND window_ = nullptr;
   HWND child_content_ = nullptr;
   bool quit_on_close_ = false;

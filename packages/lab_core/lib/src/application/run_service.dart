@@ -9,15 +9,27 @@ import '../domain/protocol_document.dart';
 import '../domain/records.dart';
 import '../domain/vault.dart';
 import '../persistence/workspace_database.dart';
+import 'protocol_execution_validator.dart';
 import '_service_support.dart';
 
 final class RunService {
-  const RunService(this.vault);
+  RunService(this.vault, {ProtocolExecutionValidator? executionValidator})
+      : _executionValidator = executionValidator;
 
   final VaultContext vault;
+  ProtocolExecutionValidator? _executionValidator;
   WorkspaceDatabase get _database => vault.database;
 
-  RunRecord createRun({
+  /// Connects the shared installed-Pack validator once at app composition.
+  void configureExecutionValidator(ProtocolExecutionValidator validator) {
+    final current = _executionValidator;
+    if (current != null && !identical(current, validator)) {
+      throw StateError('Run execution validator is already configured.');
+    }
+    _executionValidator = validator;
+  }
+
+  Future<RunRecord> createRun({
     required String experimentId,
     required String title,
     String? protocolId,
@@ -25,7 +37,7 @@ final class RunService {
     Map<String, Object?> parameters = const <String, Object?>{},
     DateTime? plannedStartUtc,
     CommandMetadata? command,
-  }) {
+  }) async {
     if ((protocolId == null) != (protocolVersion == null)) {
       throw const ValidationException(
         'PROTOCOL_VERSION_REQUIRED',
@@ -43,6 +55,18 @@ final class RunService {
       'parameter_snapshot': frozenParameters,
       'planned_start_utc': plannedStartUtc?.toUtc().toIso8601String(),
     };
+
+    // Return an idempotent replay before requiring current Pack installation
+    // state; historical Runs remain readable if a Pack is later disabled.
+    final replayed = _database.transaction(
+      (tx) => _findRunReplay(tx, actualCommand.commandId, payload),
+    );
+    if (replayed != null) return replayed;
+
+    final preparedProtocol = protocolId == null || protocolVersion == null
+        ? null
+        : await _prepareProtocolSnapshot(protocolId, protocolVersion);
+
     return _database.transaction((tx) {
       final prior = tx.findMutationByCommandId(actualCommand.commandId);
       if (prior != null) {
@@ -74,7 +98,7 @@ final class RunService {
       List<Map<String, Object?>> protocolSteps = const [];
       if (protocolId != null && protocolVersion != null) {
         final rows = tx.query(
-          '''SELECT payload_json,status FROM protocol_versions
+          '''SELECT payload_json,status,payload_sha256,approved_at_utc,provenance_json FROM protocol_versions
              WHERE protocol_id=? AND version=?''',
           [protocolId, protocolVersion],
         );
@@ -83,16 +107,37 @@ final class RunService {
             'ProtocolVersion',
             '$protocolId@$protocolVersion',
           );
-        if (rows.single['status'] != 'approved') {
+        if (rows.single['status'] != 'approved' ||
+            rows.single['approved_at_utc'] == null) {
           throw const ValidationException(
             'PROTOCOL_NOT_APPROVED',
             'Only an approved ProtocolVersion can be snapshotted into a live Run.',
           );
         }
-        protocolDocument = requireJsonObject(
+        final storedDocument = requireJsonObject(
           jsonDecode(rows.single['payload_json']! as String),
           'protocol snapshot',
         );
+        final storedProvenance = requireJsonObject(
+          jsonDecode(rows.single['provenance_json']! as String),
+          'protocol provenance',
+        );
+        final prepared = preparedProtocol!;
+        if (storedDocument['protocol_id'] != protocolId ||
+            storedDocument['version'] != protocolVersion ||
+            storedDocument['status'] != 'approved' ||
+            ProtocolDocument.contentSha256(storedDocument) !=
+                rows.single['payload_sha256'] ||
+            rows.single['payload_sha256'] != prepared.sha256 ||
+            canonicalJson(storedDocument) != canonicalJson(prepared.document) ||
+            canonicalJson(storedProvenance) !=
+                canonicalJson(prepared.provenance)) {
+          throw const ValidationException(
+            'PROTOCOL_VERSION_SNAPSHOT_INVALID',
+            'The approved ProtocolVersion changed or its identity/content hash is invalid.',
+          );
+        }
+        protocolDocument = prepared.document;
         _validateParameters(protocolDocument, frozenParameters);
         protocolSteps = (protocolDocument['steps'] as List)
             .map((step) => requireJsonObject(step, 'protocol step'))
@@ -1311,6 +1356,78 @@ final class RunService {
     ]);
     if (rows.isEmpty) throw MissingEntityException('Step', stepId);
     return rows.single;
+  }
+
+  Future<({
+    Map<String, Object?> document,
+    String sha256,
+    Map<String, Object?> provenance,
+  })> _prepareProtocolSnapshot(String protocolId, String version) async {
+    final rows = _database.query(
+      '''SELECT payload_json,status,payload_sha256,approved_at_utc,provenance_json
+         FROM protocol_versions WHERE protocol_id=? AND version=?''',
+      [protocolId, version],
+    );
+    final entityId = '$protocolId@$version';
+    if (rows.isEmpty) throw MissingEntityException('ProtocolVersion', entityId);
+    final row = rows.single;
+    if (row['status'] != 'approved' || row['approved_at_utc'] == null) {
+      throw const ValidationException(
+        'PROTOCOL_NOT_APPROVED',
+        'Only an approved ProtocolVersion can be snapshotted into a live Run.',
+      );
+    }
+    final document = requireJsonObject(
+      jsonDecode(row['payload_json']! as String),
+      'protocol snapshot',
+    );
+    final provenance = requireJsonObject(
+      jsonDecode(row['provenance_json']! as String),
+      'protocol provenance',
+    );
+    final digest = ProtocolDocument.contentSha256(document);
+    if (document['protocol_id'] != protocolId ||
+        document['version'] != version ||
+        document['status'] != 'approved' ||
+        digest != row['payload_sha256']) {
+      throw const ValidationException(
+        'PROTOCOL_VERSION_SNAPSHOT_INVALID',
+        'The approved ProtocolVersion identity or content hash is invalid.',
+      );
+    }
+    await (_executionValidator ?? const ProtocolExecutionValidator()).validate(
+      document,
+      provenance: provenance,
+    );
+    return (
+      document: freezeJsonObject(document),
+      sha256: digest,
+      provenance: freezeJsonObject(provenance),
+    );
+  }
+
+  RunRecord? _findRunReplay(
+    WorkspaceTransaction tx,
+    String commandId,
+    Map<String, Object?> payload,
+  ) {
+    final prior = tx.findMutationByCommandId(commandId);
+    if (prior == null) return null;
+    final priorIntent = Map<String, Object?>.from(prior.payload)
+      ..remove('protocol_snapshot')
+      ..remove('state')
+      ..remove('step_instances');
+    if (prior.entityType != 'run' ||
+        prior.eventType != 'run.created' ||
+        prior.action != MutationAction.create ||
+        canonicalJson(priorIntent) != canonicalJson(payload)) {
+      throw CommandAlreadyAppliedException(commandId);
+    }
+    final rows = tx.query('SELECT * FROM experiment_runs WHERE run_id=?', [
+      prior.entityId,
+    ]);
+    if (rows.isEmpty) throw MissingEntityException('Run', prior.entityId);
+    return _runFromRow(rows.single);
   }
 
   List<String> _dependencies(WorkspaceTransaction tx, String stepId) => tx

@@ -97,3 +97,13 @@ void FlutterWindow::OnDestroy() {
   controller_.reset();
   Win32Window::OnDestroy();
 }
+
+LRESULT FlutterWindow::MessageHandler(HWND window, UINT message, WPARAM wparam,
+                                      LPARAM lparam) {
+  if (controller_) {
+    const std::optional<LRESULT> result =
+        controller_->HandleTopLevelWindowProc(window, message, wparam, lparam);
+    if (result.has_value()) return *result;
+  }
+  return Win32Window::MessageHandler(window, message, wparam, lparam);
+}

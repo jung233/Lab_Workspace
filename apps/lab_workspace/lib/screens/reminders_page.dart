@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:lab_core/lab_core.dart';
 
+import '../widgets/workspace_ui.dart';
+
 import '../platform/local_reminder_notifications.dart';
 
 class RemindersPage extends StatefulWidget {
@@ -156,12 +158,12 @@ class _RemindersPageState extends State<RemindersPage> {
 
   @override
   Widget build(BuildContext context) => ListView(
-    padding: const EdgeInsets.all(24),
+    padding: const EdgeInsets.fromLTRB(28, 22, 28, 32),
     children: [
-      Text('本机任务与提醒', style: Theme.of(context).textTheme.headlineMedium),
-      const SizedBox(height: 8),
-      const Text(
-        '任务、计划时间和提醒状态保存在此设备的 Vault。创建提醒时才会请求 OS 通知权限；被拒绝、过期或排程失败的记录不会显示为已投递。',
+      WorkspacePageHeader(
+        title: '任务与提醒',
+        subtitle: '任务与排程保存在本机 Vault。创建提醒时才请求系统通知权限，状态会如实反映系统结果。',
+        icon: Icons.notifications_active_outlined,
       ),
       const SizedBox(height: 16),
       Card(
@@ -245,9 +247,13 @@ class _RemindersPageState extends State<RemindersPage> {
           actions: [TextButton(onPressed: _reload, child: const Text('重试'))],
         ),
       const SizedBox(height: 12),
-      Text('待办任务', style: Theme.of(context).textTheme.titleLarge),
+      const WorkspaceSectionHeader(title: '待办任务'),
       if (_tasks.isEmpty)
-        const Card(child: ListTile(title: Text('暂无未完成的本地任务。')))
+        const WorkspaceEmptyState(
+          icon: Icons.task_alt_outlined,
+          title: '没有未完成任务',
+          description: '新建的本机任务会显示在这里。',
+        )
       else
         for (final task in _tasks)
           Card(
@@ -260,9 +266,13 @@ class _RemindersPageState extends State<RemindersPage> {
             ),
           ),
       const SizedBox(height: 12),
-      Text('本机提醒队列', style: Theme.of(context).textTheme.titleLarge),
+      const WorkspaceSectionHeader(title: '本机提醒队列'),
       if (_reminders.isEmpty)
-        const Card(child: ListTile(title: Text('暂无待排程提醒。')))
+        const WorkspaceEmptyState(
+          icon: Icons.notifications_none_outlined,
+          title: '没有待排程提醒',
+          description: '新增任务提醒后，系统排程状态会显示在这里。',
+        )
       else
         for (final reminder in _reminders)
           Card(

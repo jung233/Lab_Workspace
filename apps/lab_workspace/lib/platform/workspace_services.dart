@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:lab_core/lab_core.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'calculation_pack_signatures.dart';
 import '../integrations/microsoft_identity.dart';
@@ -28,6 +29,11 @@ final class WorkspaceServices {
         settings: core.settings,
       ),
     );
+    final protocolExecutionValidator = ProtocolExecutionValidator(
+      calculationBinder: WorkflowCalculationPackBinder(packRegistry),
+    );
+    core.protocols.configureExecutionValidator(protocolExecutionValidator);
+    core.runs.configureExecutionValidator(protocolExecutionValidator);
     calculations = CalculationService(
       database: core.database,
       vault: core.vault.context,
@@ -59,12 +65,20 @@ final class WorkspaceServices {
   late final LocalReminderNotifications localNotifications;
   late final CalculationPackRegistry packRegistry;
   late final CalculationService calculations;
+  late final ProjectStorageService projectStorage;
   late final SyncService sync;
   late final BackupService backups;
   bool _initialized = false;
 
   Future<void> initialize() async {
     if (_initialized) return;
+    final documents = await getApplicationDocumentsDirectory();
+    projectStorage = ProjectStorageService(
+      vault: core.vault.context,
+      assets: assets,
+      documentsDirectory: documents.path,
+    );
+    assets.addPostImportMaterializer(projectStorage.materializeImportedAsset);
     await assets.initialize();
     await localNotifications.initialize();
     _initialized = true;

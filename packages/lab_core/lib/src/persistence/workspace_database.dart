@@ -387,6 +387,17 @@ final class WorkspaceDatabase {
         return null;
       });
       _database.userVersion = 4;
+      version = 4;
+    }
+
+    if (version < 5) {
+      transaction((tx) {
+        for (final statement in schemaV5Statements) {
+          tx.execute(statement);
+        }
+        return null;
+      });
+      _database.userVersion = 5;
     }
   }
 

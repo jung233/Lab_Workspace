@@ -5,6 +5,7 @@ export 'models.dart';
 export 'openai_python_sdk_bridge.dart';
 export 'pack_draft_service.dart';
 export 'provider_adapters.dart';
+export 'protocol_draft_service.dart';
 export 'skill_registry.dart';
 export 'sqlite_skill_registry_repository.dart';
 export 'sqlite_ai_repositories.dart';

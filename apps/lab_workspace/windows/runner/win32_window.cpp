@@ -1,22 +1,45 @@
 #include "win32_window.h"
 
+#include <flutter_windows.h>
+
+#include "resource.h"
+
 namespace {
 constexpr wchar_t kWindowClass[] = L"LabWorkspaceFlutterWindow";
+
+int ScaleForDpi(int value, UINT dpi) {
+  return MulDiv(value, static_cast<int>(dpi), 96);
+}
 }
 
 Win32Window::Win32Window() = default;
 Win32Window::~Win32Window() = default;
 
 bool Win32Window::Create(const wchar_t* title, const Point& origin, const Size& size) {
-  WNDCLASSW window_class = {};
+  WNDCLASSEXW window_class = {};
+  window_class.cbSize = sizeof(WNDCLASSEXW);
   window_class.hCursor = LoadCursor(nullptr, IDC_ARROW);
   window_class.lpszClassName = kWindowClass;
   window_class.style = CS_HREDRAW | CS_VREDRAW;
   window_class.lpfnWndProc = WndProc;
   window_class.hInstance = GetModuleHandle(nullptr);
-  RegisterClassW(&window_class);
-  window_ = CreateWindowW(kWindowClass, title, WS_OVERLAPPEDWINDOW, origin.x, origin.y,
-                          size.width, size.height, nullptr, nullptr, window_class.hInstance, this);
+  window_class.hIcon = static_cast<HICON>(LoadImageW(
+      window_class.hInstance, MAKEINTRESOURCEW(IDI_APP_ICON), IMAGE_ICON, 0, 0,
+      LR_DEFAULTSIZE));
+  window_class.hIconSm = static_cast<HICON>(LoadImageW(
+      window_class.hInstance, MAKEINTRESOURCEW(IDI_APP_ICON), IMAGE_ICON,
+      GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), 0));
+  RegisterClassExW(&window_class);
+  const POINT logical_origin = {static_cast<LONG>(origin.x), static_cast<LONG>(origin.y)};
+  const HMONITOR monitor = MonitorFromPoint(logical_origin, MONITOR_DEFAULTTONEAREST);
+  UINT dpi = monitor ? FlutterDesktopGetDpiForMonitor(monitor) : 96;
+  if (dpi == 0) dpi = 96;
+  window_ = CreateWindowW(kWindowClass, title, WS_OVERLAPPEDWINDOW,
+                          ScaleForDpi(static_cast<int>(origin.x), dpi),
+                          ScaleForDpi(static_cast<int>(origin.y), dpi),
+                          ScaleForDpi(static_cast<int>(size.width), dpi),
+                          ScaleForDpi(static_cast<int>(size.height), dpi),
+                          nullptr, nullptr, window_class.hInstance, this);
   return window_ != nullptr && OnCreate();
 }
 
@@ -47,11 +70,30 @@ LRESULT CALLBACK Win32Window::WndProc(HWND window, UINT message, WPARAM wparam, 
                   : DefWindowProcW(window, message, wparam, lparam);
 }
 
-LRESULT Win32Window::MessageHandler(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
+LRESULT Win32Window::MessageHandler(HWND window, UINT message, WPARAM wparam,
+                                    LPARAM lparam) {
   switch (message) {
-    case WM_SIZE: OnSize(LOWORD(lparam), HIWORD(lparam)); return 0;
-    case WM_DESTROY: OnDestroy(); if (quit_on_close_) PostQuitMessage(0); return 0;
-    case WM_NCDESTROY: SetWindowLongPtrW(window, GWLP_USERDATA, 0); window_ = nullptr; break;
+    case WM_DPICHANGED: {
+      const auto* suggested = reinterpret_cast<const RECT*>(lparam);
+      if (suggested != nullptr) {
+        SetWindowPos(window, nullptr, suggested->left, suggested->top,
+                     suggested->right - suggested->left,
+                     suggested->bottom - suggested->top,
+                     SWP_NOZORDER | SWP_NOACTIVATE);
+      }
+      return 0;
+    }
+    case WM_SIZE:
+      OnSize(LOWORD(lparam), HIWORD(lparam));
+      return 0;
+    case WM_DESTROY:
+      OnDestroy();
+      if (quit_on_close_) PostQuitMessage(0);
+      return 0;
+    case WM_NCDESTROY:
+      SetWindowLongPtrW(window, GWLP_USERDATA, 0);
+      window_ = nullptr;
+      break;
   }
   return DefWindowProcW(window, message, wparam, lparam);
 }

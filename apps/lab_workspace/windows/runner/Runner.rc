@@ -1,4 +1,7 @@
 #include <windows.h>
+#include "resource.h"
+
+IDI_APP_ICON ICON "resources\\app_icon.ico"
 
 VS_VERSION_INFO VERSIONINFO
  FILEVERSION 2,0,0,1

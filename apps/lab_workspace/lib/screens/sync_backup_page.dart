@@ -6,6 +6,8 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:lab_core/lab_core.dart';
+
+import '../widgets/workspace_ui.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../integrations/microsoft_onedrive_connect_page.dart';
@@ -259,9 +261,7 @@ class _SyncBackupPageState extends State<SyncBackupPage> {
     }
   }
 
-  Future<void> _reauthorizeHistoricalEpoch(
-    SyncHistoricalEpoch epoch,
-  ) async {
+  Future<void> _reauthorizeHistoricalEpoch(SyncHistoricalEpoch epoch) async {
     final target = epoch.target;
     SecretRef? credentialRef;
     SecretRef? encryptionRef;
@@ -316,9 +316,7 @@ class _SyncBackupPageState extends State<SyncBackupPage> {
         final oldKey = await widget.secretStore.read(SecretRef(oldKeyId));
         if (oldKey == null || oldKey.length != 32) {
           oldKey?.fillRange(0, oldKey.length, 0);
-          throw StateError(
-            '缺少此历史 epoch 的 32 字节恢复密钥。请先导入对应 Vault 的恢复密钥，再重新授权。',
-          );
+          throw StateError('缺少此历史 epoch 的 32 字节恢复密钥。请先导入对应 Vault 的恢复密钥，再重新授权。');
         }
         try {
           encryptionRef = await widget.secretStore.write(oldKey);
@@ -378,9 +376,7 @@ class _SyncBackupPageState extends State<SyncBackupPage> {
       ownsEncryption = false;
       await _refresh();
       if (mounted) {
-        _showMessage(
-          '历史 epoch ${epoch.epoch} 已仅在本设备重新授权。远端同步仍需单独预览并确认。',
-        );
+        _showMessage('历史 epoch ${epoch.epoch} 已仅在本设备重新授权。远端同步仍需单独预览并确认。');
       }
     } on Object catch (error) {
       if (mounted) _showError(error);
@@ -663,7 +659,9 @@ class _SyncBackupPageState extends State<SyncBackupPage> {
                       const SizedBox(height: 6),
                       const Text('本机活动引用：'),
                       for (final link in impact.activeLinks.take(8))
-                        Text('• ${link.targetType}:${link.targetId} / ${link.role}'),
+                        Text(
+                          '• ${link.targetType}:${link.targetId} / ${link.role}',
+                        ),
                     ],
                     const SizedBox(height: 10),
                     const Text(
@@ -829,7 +827,7 @@ class _SyncBackupPageState extends State<SyncBackupPage> {
       builder: (context) => AlertDialog(
         title: const Text('校验并恢复到新 Vault？'),
         content: const Text(
-            '恢复将验证 manifest、所有对象的存储与明文 SHA-256、数据库完整性和 Vault 标识；'
+          '恢复将验证 manifest、所有对象的存储与明文 SHA-256、数据库完整性和 Vault 标识；'
           '不会覆盖当前 Vault。恢复结果会写入单独目录，完成后需在应用重新启动时选择该 Vault。',
         ),
         actions: [
@@ -888,9 +886,7 @@ class _SyncBackupPageState extends State<SyncBackupPage> {
         );
         try {
           if (restoredCore.vault.id != result.vaultId) {
-            throw StateError(
-              '恢复目录中的 Vault 身份与恢复结果不一致；未更改下次启动选择。',
-            );
+            throw StateError('恢复目录中的 Vault 身份与恢复结果不一致；未更改下次启动选择。');
           }
           final support = await getApplicationSupportDirectory();
           await ActiveVaultSelection.atSupportDirectory(support).write(
@@ -910,9 +906,7 @@ class _SyncBackupPageState extends State<SyncBackupPage> {
           );
         }
       } else if (mounted) {
-        _showMessage(
-          '已恢复 Vault ${result.vaultId}，当前打开的 Vault 未切换。',
-        );
+        _showMessage('已恢复 Vault ${result.vaultId}，当前打开的 Vault 未切换。');
       }
     } on Object catch (error) {
       if (mounted) _showError(error);
@@ -1118,9 +1112,7 @@ class _SyncBackupPageState extends State<SyncBackupPage> {
         ),
       );
       if (mounted) {
-        _showMessage(
-          '已选择 Vault ${candidate.vault.id}。重新启动应用后打开；当前会话没有切换。',
-        );
+        _showMessage('已选择 Vault ${candidate.vault.id}。重新启动应用后打开；当前会话没有切换。');
       }
     } on Object catch (error) {
       if (mounted) _showError(error);
@@ -1140,13 +1132,25 @@ class _SyncBackupPageState extends State<SyncBackupPage> {
 
   @override
   Widget build(BuildContext context) => ListView(
-    padding: const EdgeInsets.all(24),
+    padding: const EdgeInsets.fromLTRB(28, 22, 28, 34),
     children: [
-      Text('同步与备份', style: Theme.of(context).textTheme.headlineMedium),
-      const SizedBox(height: 8),
-      const Text(
-        '每台设备维护自己的 SQLite Vault。远程同步只交换不可变事件和 Blob，'
-        '备份则通过 SQLite Online Backup API 生成独立数据库快照。所有远端传输都由你逐次确认。',
+      WorkspacePageHeader(
+        title: '同步与备份',
+        subtitle:
+            '每台设备维护自己的 SQLite Vault。同步交换不可变事件和 Blob；备份使用 SQLite Online Backup 快照。',
+        icon: Icons.cloud_sync_outlined,
+        actions: [
+          FilledButton.icon(
+            onPressed: _busy ? null : () => _createBackup(),
+            icon: const Icon(Icons.save_outlined),
+            label: const Text('本机明文快照'),
+          ),
+          IconButton(
+            tooltip: '刷新远端目标和空间用量',
+            onPressed: _refresh,
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
       ),
       if (_error != null)
         MaterialBanner(
@@ -1169,11 +1173,6 @@ class _SyncBackupPageState extends State<SyncBackupPage> {
             label: const Text('配置 S3 兼容目标'),
           ),
           OutlinedButton.icon(
-            onPressed: _busy ? null : _createBackup,
-            icon: const Icon(Icons.save_outlined),
-            label: const Text('创建本机明文快照'),
-          ),
-          OutlinedButton.icon(
             onPressed: _busy ? null : _restoreBackup,
             icon: const Icon(Icons.restore),
             label: const Text('校验并恢复快照'),
@@ -1193,11 +1192,6 @@ class _SyncBackupPageState extends State<SyncBackupPage> {
             icon: const Icon(Icons.key),
             label: const Text('导入恢复密钥'),
           ),
-          IconButton(
-            tooltip: '刷新远端目标和空间用量',
-            onPressed: _refresh,
-            icon: const Icon(Icons.refresh),
-          ),
         ],
       ),
       if (_busy) const LinearProgressIndicator(),
@@ -1213,7 +1207,10 @@ class _SyncBackupPageState extends State<SyncBackupPage> {
           ),
         ),
       const SizedBox(height: 16),
-      Text('远端测量待审核', style: Theme.of(context).textTheme.titleLarge),
+      WorkspaceSectionHeader(
+        title: '远端测量待审核',
+        subtitle: '查看原始 Trace 并逐条批准后才会进入本机记录。',
+      ),
       const Text('同步收到的计算型测量保持隔离，需逐条查看原始 Trace 并明确批准后才能进入本机记录。'),
       if (_remoteMeasurements.isEmpty)
         const Card(
@@ -1246,7 +1243,10 @@ class _SyncBackupPageState extends State<SyncBackupPage> {
             ),
           ),
       const SizedBox(height: 16),
-      Text('远端资产删除待审', style: Theme.of(context).textTheme.titleLarge),
+      WorkspaceSectionHeader(
+        title: '远端资产删除待审',
+        subtitle: '软删除前先核对本机引用与共享 Blob 影响。',
+      ),
       const Text(
         '远端 tombstone 不会直接复用源设备审批。软删除需先查看本机引用/共享 Blob 影响，再签发本机审批；远端 purge 只记审计，不删除本机内容。',
       ),
@@ -1288,7 +1288,7 @@ class _SyncBackupPageState extends State<SyncBackupPage> {
             ),
           ),
       const SizedBox(height: 16),
-      Text('历史同步策略授权', style: Theme.of(context).textTheme.titleLarge),
+      const WorkspaceSectionHeader(title: '历史同步策略授权'),
       const Text(
         '恢复 Vault 后，旧 epoch 的云端凭据不会自动使用。逐项重新输入 OneDrive Files 或 S3 凭据；加密 epoch 还需先导入对应历史恢复密钥。审批只授权本机读取该 epoch，不会启动同步。',
       ),

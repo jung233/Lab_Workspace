@@ -3,6 +3,7 @@ import 'package:lab_core/lab_core.dart';
 
 import '../platform/asset_import_picker.dart';
 import '../platform/system_file_actions.dart';
+import '../widgets/workspace_ui.dart';
 
 class AssetExplorerScreen extends StatefulWidget {
   const AssetExplorerScreen({
@@ -286,9 +287,30 @@ class _ExplorerPageState extends State<AssetExplorerScreen> {
   Widget build(BuildContext context) {
     final items = _page?.items ?? const <ExplorerAsset>[];
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          padding: const EdgeInsets.fromLTRB(28, 22, 28, 8),
+          child: WorkspacePageHeader(
+            title: '原始文件',
+            subtitle: '本机 AssetStore · 原始资产、虚拟文件夹、引用关系与完整性状态。',
+            icon: Icons.folder_open_outlined,
+            actions: [
+              FilledButton.icon(
+                onPressed: _busy ? null : _import,
+                icon: const Icon(Icons.add),
+                label: const Text('导入文件'),
+              ),
+              OutlinedButton.icon(
+                onPressed: _busy ? null : _collectGarbage,
+                icon: const Icon(Icons.delete_sweep_outlined),
+                label: const Text('安全 GC'),
+              ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(28, 4, 28, 10),
           child: Wrap(
             spacing: 12,
             runSpacing: 8,
@@ -326,16 +348,6 @@ class _ExplorerPageState extends State<AssetExplorerScreen> {
                         }
                       },
               ),
-              FilledButton.icon(
-                onPressed: _busy ? null : _import,
-                icon: const Icon(Icons.add),
-                label: const Text('导入文件'),
-              ),
-              OutlinedButton.icon(
-                onPressed: _busy ? null : _collectGarbage,
-                icon: const Icon(Icons.delete_sweep_outlined),
-                label: const Text('运行安全 GC'),
-              ),
               IconButton(
                 onPressed: _busy ? null : _refresh,
                 tooltip: '刷新',
@@ -362,7 +374,18 @@ class _ExplorerPageState extends State<AssetExplorerScreen> {
         if (_busy) const LinearProgressIndicator(),
         Expanded(
           child: items.isEmpty
-              ? Center(child: Text(_busy ? '正在读取本地文件库…' : '此文件夹中没有资产。'))
+              ? _busy
+                    ? const Center(child: CircularProgressIndicator())
+                    : WorkspaceEmptyState(
+                        icon: Icons.inventory_2_outlined,
+                        title: '此文件夹中没有资产',
+                        description: '导入原始文件后会显示 SHA-256、完整性检查和关联位置。',
+                        action: FilledButton.icon(
+                          onPressed: _import,
+                          icon: const Icon(Icons.add),
+                          label: const Text('导入文件'),
+                        ),
+                      )
               : ListView.separated(
                   itemCount: items.length,
                   separatorBuilder: (_, _) => const Divider(height: 1),

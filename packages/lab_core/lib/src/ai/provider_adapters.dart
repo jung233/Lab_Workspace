@@ -18,10 +18,10 @@ class AiSdkRequest {
 
   /// Safe for diagnostics: intentionally excludes headers and request content.
   Map<String, Object?> toLogFields() => {
-        'api_mode': apiMode.name,
-        'endpoint_host': endpoint.host,
-        'timeout_seconds': timeoutSeconds,
-      };
+    'api_mode': apiMode.name,
+    'endpoint_host': endpoint.host,
+    'timeout_seconds': timeoutSeconds,
+  };
 }
 
 class AiSdkResponse {
@@ -48,11 +48,14 @@ abstract interface class AiSdkBridge {
 }
 
 class AiConversationState {
-  AiConversationState({this.responsesId, List<Map<String, Object?>>? chatMessages})
-      : chatMessages = chatMessages ?? <Map<String, Object?>>[],
-        responsesInput = <Map<String, Object?>>[];
+  AiConversationState({
+    this.responsesId,
+    List<Map<String, Object?>>? chatMessages,
+  }) : chatMessages = chatMessages ?? <Map<String, Object?>>[],
+       responsesInput = <Map<String, Object?>>[];
   String? responsesId;
   final List<Map<String, Object?>> chatMessages;
+
   /// Local conversation history sent back with `store:false`; no provider-side
   /// response retrieval or durable server-side conversation is required.
   final List<Map<String, Object?>> responsesInput;
@@ -94,32 +97,48 @@ class ResponsesAdapter implements AiApiAdapter {
     required List<AiToolResult> toolResults,
   }) async {
     if (state.responsesInput.isEmpty) {
-      state.responsesInput.add({'role': 'user', 'content': _responsesContent(content)});
+      state.responsesInput.add({
+        'role': 'user',
+        'content': _responsesContent(content),
+      });
     }
-    state.responsesInput.addAll(toolResults.map((item) => {
+    state.responsesInput.addAll(
+      toolResults.map(
+        (item) => {
           'type': 'function_call_output',
           'call_id': item.callId,
           'output': jsonEncode(item.output),
-        }));
+        },
+      ),
+    );
     final body = <String, Object?>{
       'model': profile.modelId,
       'max_output_tokens': profile.maxOutputTokens,
       'store': false,
+      if (content.systemPrompt != null && content.systemPrompt!.isNotEmpty)
+        'instructions': content.systemPrompt,
       'input': List<Map<String, Object?>>.unmodifiable(state.responsesInput),
-      if (tools.isNotEmpty) 'tools': tools.map(_responsesTool).toList(growable: false),
+      if (tools.isNotEmpty)
+        'tools': tools.map(_responsesTool).toList(growable: false),
     };
-    final response = await bridge.send(_request(profile, apiKey, body, '/responses'));
+    final response = await bridge.send(
+      _request(profile, apiKey, body, '/responses'),
+    );
     _checkStatus(response);
     final items = <AiTurnItem>[];
     for (final item in _asMapList(response.body['output'])) {
       state.responsesInput.add(Map<String, Object?>.from(item));
       if (item['type'] == 'function_call') {
         final arguments = _decodeArguments(item['arguments']);
-        items.add(AiToolRequestItem(AiToolCall(
-          callId: _requiredString(item['call_id'], 'call_id'),
-          name: _requiredString(item['name'], 'name'),
-          arguments: arguments,
-        )));
+        items.add(
+          AiToolRequestItem(
+            AiToolCall(
+              callId: _requiredString(item['call_id'], 'call_id'),
+              name: _requiredString(item['name'], 'name'),
+              arguments: arguments,
+            ),
+          ),
+        );
       } else if (item['type'] == 'message') {
         for (final chunk in _asMapList(item['content'])) {
           final text = chunk['text'];
@@ -150,7 +169,14 @@ class ChatCompletionsAdapter implements AiApiAdapter {
     required List<AiToolResult> toolResults,
   }) async {
     if (state.chatMessages.isEmpty) {
-      state.chatMessages.add({'role': 'user', 'content': _chatContent(content)});
+      final systemPrompt = content.systemPrompt;
+      if (systemPrompt != null && systemPrompt.isNotEmpty) {
+        state.chatMessages.add({'role': 'system', 'content': systemPrompt});
+      }
+      state.chatMessages.add({
+        'role': 'user',
+        'content': _chatContent(content),
+      });
     }
     for (final result in toolResults) {
       state.chatMessages.add({
@@ -166,31 +192,44 @@ class ChatCompletionsAdapter implements AiApiAdapter {
       'max_tokens': profile.maxOutputTokens,
       if (tools.isNotEmpty)
         'tools': tools
-            .map((tool) => {
-                  'type': 'function',
-                  'function': {
-                    'name': tool.name,
-                    'description': tool.description,
-                    'parameters': tool.parametersSchema,
-                  }
-                })
+            .map(
+              (tool) => {
+                'type': 'function',
+                'function': {
+                  'name': tool.name,
+                  'description': tool.description,
+                  'parameters': tool.parametersSchema,
+                },
+              },
+            )
             .toList(growable: false),
     };
-    final response = await bridge.send(_request(profile, apiKey, body, '/chat/completions'));
+    final response = await bridge.send(
+      _request(profile, apiKey, body, '/chat/completions'),
+    );
     _checkStatus(response);
     final choices = _asMapList(response.body['choices']);
-    if (choices.isEmpty) throw const AiProviderException('AI_EMPTY_RESPONSE', 'Provider returned no choices.');
+    if (choices.isEmpty)
+      throw const AiProviderException(
+        'AI_EMPTY_RESPONSE',
+        'Provider returned no choices.',
+      );
     final message = _asMap(choices.first['message']);
     final contentValue = message['content'];
     final items = <AiTurnItem>[];
-    if (contentValue is String && contentValue.isNotEmpty) items.add(AiTextItem(contentValue));
+    if (contentValue is String && contentValue.isNotEmpty)
+      items.add(AiTextItem(contentValue));
     for (final call in _asMapList(message['tool_calls'])) {
       final function = _asMap(call['function']);
-      items.add(AiToolRequestItem(AiToolCall(
-        callId: _requiredString(call['id'], 'tool_call.id'),
-        name: _requiredString(function['name'], 'function.name'),
-        arguments: _decodeArguments(function['arguments']),
-      )));
+      items.add(
+        AiToolRequestItem(
+          AiToolCall(
+            callId: _requiredString(call['id'], 'tool_call.id'),
+            name: _requiredString(function['name'], 'function.name'),
+            arguments: _decodeArguments(function['arguments']),
+          ),
+        ),
+      );
     }
     if (items.any((item) => item is AiToolRequestItem)) {
       state.chatMessages.add({
@@ -222,29 +261,40 @@ AiSdkRequest _request(
   Map<String, Object?> body,
   String endpoint,
 ) {
-  if (apiKey.trim().isEmpty) throw const AiProviderException('AI_SECRET_MISSING', 'Provider credential is empty.');
+  if (apiKey.trim().isEmpty)
+    throw const AiProviderException(
+      'AI_SECRET_MISSING',
+      'Provider credential is empty.',
+    );
   return AiSdkRequest(
     apiMode: profile.apiMode,
     endpoint: _endpoint(profile.baseUrl, endpoint),
-    headers: {'Authorization': 'Bearer $apiKey', 'Content-Type': 'application/json'},
+    headers: {
+      'Authorization': 'Bearer $apiKey',
+      'Content-Type': 'application/json',
+    },
     body: body,
     timeoutSeconds: profile.timeoutSeconds,
   );
 }
 
 Uri _endpoint(Uri base, String suffix) {
-  final basePath = base.path.endsWith('/') ? base.path.substring(0, base.path.length - 1) : base.path;
-  final path = basePath.endsWith('/v1') ? '$basePath$suffix' : '$basePath/v1$suffix';
+  final basePath = base.path.endsWith('/')
+      ? base.path.substring(0, base.path.length - 1)
+      : base.path;
+  final path = basePath.endsWith('/v1')
+      ? '$basePath$suffix'
+      : '$basePath/v1$suffix';
   return base.replace(path: path, query: null, fragment: null);
 }
 
 Map<String, Object?> _responsesTool(AiToolDefinition tool) => {
-      'type': 'function',
-      'name': tool.name,
-      'description': tool.description,
-      'parameters': tool.parametersSchema,
-      'strict': true,
-    };
+  'type': 'function',
+  'name': tool.name,
+  'description': tool.description,
+  'parameters': tool.parametersSchema,
+  'strict': true,
+};
 
 Object _responsesContent(AiContent content) {
   final image = content.imageDataUri;
@@ -260,7 +310,10 @@ Object _chatContent(AiContent content) {
   if (image == null) return content.text;
   return [
     {'type': 'text', 'text': content.text},
-    {'type': 'image_url', 'image_url': {'url': image}},
+    {
+      'type': 'image_url',
+      'image_url': {'url': image},
+    },
   ];
 }
 
@@ -268,23 +321,38 @@ void _checkStatus(AiSdkResponse response) {
   if (response.statusCode >= 200 && response.statusCode < 300) return;
   // Provider bodies can contain prompts or user data; retain only a safe error code.
   final error = _asMap(response.body['error']);
-  final code = error['code'] is String ? error['code'] as String : 'AI_PROVIDER_HTTP_${response.statusCode}';
-  throw AiProviderException(code, 'Provider request failed with HTTP ${response.statusCode}.',
-      retryable: response.statusCode == 429 || response.statusCode >= 500);
+  final code = error['code'] is String
+      ? error['code'] as String
+      : 'AI_PROVIDER_HTTP_${response.statusCode}';
+  throw AiProviderException(
+    code,
+    'Provider request failed with HTTP ${response.statusCode}.',
+    retryable: response.statusCode == 429 || response.statusCode >= 500,
+  );
 }
 
 Map<String, Object?> _decodeArguments(Object? value) {
   if (value is Map<String, Object?>) return value;
-  if (value is Map) return value.map((key, entry) => MapEntry(key.toString(), entry));
+  if (value is Map)
+    return value.map((key, entry) => MapEntry(key.toString(), entry));
   if (value is String) {
     final decoded = jsonDecode(value);
-    if (decoded is Map) return decoded.map((key, entry) => MapEntry(key.toString(), entry));
+    if (decoded is Map)
+      return decoded.map((key, entry) => MapEntry(key.toString(), entry));
   }
-  throw const AiProviderException('AI_TOOL_ARGUMENTS_INVALID', 'Tool arguments must be a JSON object.');
+  throw const AiProviderException(
+    'AI_TOOL_ARGUMENTS_INVALID',
+    'Tool arguments must be a JSON object.',
+  );
 }
 
 List<Map<String, Object?>> _asMapList(Object? value) => value is List
-    ? value.whereType<Map>().map((item) => item.map((key, entry) => MapEntry(key.toString(), entry))).toList()
+    ? value
+          .whereType<Map>()
+          .map(
+            (item) => item.map((key, entry) => MapEntry(key.toString(), entry)),
+          )
+          .toList()
     : const [];
 
 Map<String, Object?> _asMap(Object? value) => value is Map
@@ -293,5 +361,8 @@ Map<String, Object?> _asMap(Object? value) => value is Map
 
 String _requiredString(Object? value, String field) {
   if (value is String && value.isNotEmpty) return value;
-  throw AiProviderException('AI_RESPONSE_INVALID', 'Provider response is missing $field.');
+  throw AiProviderException(
+    'AI_RESPONSE_INVALID',
+    'Provider response is missing $field.',
+  );
 }

@@ -9,13 +9,27 @@ import '../domain/records.dart';
 import '../domain/security.dart';
 import '../domain/vault.dart';
 import '../persistence/workspace_database.dart';
+import 'protocol_execution_validator.dart';
 import '_service_support.dart';
 
 final class ProtocolService {
-  const ProtocolService(this.vault);
+  ProtocolService(this.vault, {ProtocolExecutionValidator? executionValidator})
+      : _executionValidator = executionValidator;
 
   final VaultContext vault;
+  ProtocolExecutionValidator? _executionValidator;
   WorkspaceDatabase get _database => vault.database;
+
+  /// Connects the device's approved-pack verifier at the application boundary.
+  /// It may be configured once; swapping the verifier after use could weaken
+  /// the approval policy for the same Vault.
+  void configureExecutionValidator(ProtocolExecutionValidator validator) {
+    final current = _executionValidator;
+    if (current != null && !identical(current, validator)) {
+      throw StateError('Protocol execution validator is already configured.');
+    }
+    _executionValidator = validator;
+  }
 
   ProtocolVersionRecord saveDraft({
     required Map<String, Object?> document,
@@ -155,12 +169,12 @@ final class ProtocolService {
     });
   }
 
-  ProtocolVersionRecord approveVersion({
+  Future<ProtocolVersionRecord> approveVersion({
     required String protocolId,
     required String version,
     required ApprovalRef approvalRef,
     CommandMetadata? command,
-  }) {
+  }) async {
     final actualCommand = serviceCommand(command: command);
     final entityId = '$protocolId@$version';
     final mutationPayload = <String, Object?>{
@@ -168,6 +182,68 @@ final class ProtocolService {
       'version': version,
       'approval_ref': approvalRef.value,
     };
+
+    final replayed = _database.transaction((tx) {
+      final prior = tx.findMutationByCommandId(actualCommand.commandId);
+      if (prior == null) return null;
+      final priorPayload = prior.payload;
+      if (prior.entityType != 'protocol_version' ||
+          prior.entityId != entityId ||
+          prior.eventType != 'protocol.approved' ||
+          prior.action != MutationAction.patch ||
+          priorPayload['protocol_id'] != protocolId ||
+          priorPayload['version'] != version ||
+          priorPayload['approval_ref'] != approvalRef.value) {
+        throw CommandAlreadyAppliedException(actualCommand.commandId);
+      }
+      final rows = tx.query(
+        'SELECT * FROM protocol_versions WHERE protocol_id=? AND version=?',
+        [protocolId, version],
+      );
+      if (rows.isEmpty) throw MissingEntityException('ProtocolVersion', entityId);
+      return _recordFromRow(rows.single);
+    });
+    if (replayed != null) return replayed;
+
+    // Workflow validation involves resolving installed Packs and verifying
+    // their approval/signature, so it must run before opening the SQLite write
+    // transaction. The content hash is checked again in that transaction to
+    // ensure the inspected draft is still the one being approved.
+    final draftRows = _database.query(
+      'SELECT payload_json,status,payload_sha256,provenance_json,approved_at_utc '
+      'FROM protocol_versions WHERE protocol_id=? AND version=?',
+      [protocolId, version],
+    );
+    if (draftRows.isEmpty) {
+      throw MissingEntityException('ProtocolVersion', entityId);
+    }
+    if (draftRows.single['status'] != 'draft' ||
+        draftRows.single['approved_at_utc'] != null) {
+      throw const ValidationException(
+        'APPROVED_PROTOCOL_IMMUTABLE',
+        'Only a draft ProtocolVersion can be approved.',
+      );
+    }
+    final draftDocument = requireJsonObject(
+      jsonDecode(draftRows.single['payload_json']! as String),
+      'protocol draft',
+    );
+    final draftProvenance = requireJsonObject(
+      jsonDecode(draftRows.single['provenance_json']! as String),
+      'protocol provenance',
+    );
+    final inspectedHash = ProtocolDocument.contentSha256(draftDocument);
+    if (inspectedHash != draftRows.single['payload_sha256']) {
+      throw const ValidationException(
+        'PROTOCOL_VERSION_HASH_MISMATCH',
+        'Protocol draft content no longer matches its stored hash.',
+      );
+    }
+    await (_executionValidator ?? const ProtocolExecutionValidator()).validate(
+      draftDocument,
+      provenance: draftProvenance,
+    );
+
     return _database.transaction((tx) {
       final prior = tx.findMutationByCommandId(actualCommand.commandId);
       if (prior != null) {
@@ -195,6 +271,16 @@ final class ProtocolService {
       if (rows.isEmpty)
         throw MissingEntityException('ProtocolVersion', entityId);
       final existing = _recordFromRow(rows.single);
+      final persistedProvenance = requireJsonObject(
+        jsonDecode(rows.single['provenance_json']! as String),
+        'protocol provenance',
+      );
+      if (canonicalJson(persistedProvenance) != canonicalJson(draftProvenance)) {
+        throw const ValidationException(
+          'PROTOCOL_APPROVAL_RACE',
+          'Protocol provenance changed while workflow bindings were being checked; reload and review it again.',
+        );
+      }
       tx.requireApproval(
         approvalRef: approvalRef,
         action: 'protocol.approve',
@@ -210,6 +296,12 @@ final class ProtocolService {
         throw const ValidationException(
           'APPROVED_PROTOCOL_IMMUTABLE',
           'This ProtocolVersion is already approved; create a new version to change it.',
+        );
+      }
+      if (existing.payloadSha256 != inspectedHash) {
+        throw const ValidationException(
+          'PROTOCOL_APPROVAL_RACE',
+          'ProtocolVersion changed while workflow bindings were being checked; reload and review it again.',
         );
       }
       final approvedDocument = Map<String, Object?>.from(existing.document);

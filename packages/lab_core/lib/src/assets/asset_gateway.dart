@@ -24,19 +24,30 @@ final class AssetGateway {
     required VaultContext vault,
     Duration trashRetention = const Duration(days: 30),
     bool fullVerifyLargeFilesOnEveryOpen = false,
-  })  : _vault = vault,
-        _store = AssetStore(vaultRootDirectory: vault.rootDirectory),
-        trashRetention = trashRetention,
-        fullVerifyLargeFilesOnEveryOpen = fullVerifyLargeFilesOnEveryOpen;
+  }) : _vault = vault,
+       _store = AssetStore(vaultRootDirectory: vault.rootDirectory),
+       trashRetention = trashRetention,
+       fullVerifyLargeFilesOnEveryOpen = fullVerifyLargeFilesOnEveryOpen;
 
-  static const int defaultIntegrityThresholdBytes = defaultStrictSizeThresholdBytes;
+  static const int defaultIntegrityThresholdBytes =
+      defaultStrictSizeThresholdBytes;
 
   final VaultContext _vault;
   final AssetStore _store;
   final Duration trashRetention;
   final bool fullVerifyLargeFilesOnEveryOpen;
   final Map<String, Completer<void>> _blobLocks = <String, Completer<void>>{};
+  final List<PostAssetImportMaterializer> _postImportMaterializers =
+      <PostAssetImportMaterializer>[];
   bool _initialized = false;
+
+  /// Registers a local, post-commit materializer such as a project browse-copy
+  /// exporter. Its failure must never roll back or misreport a committed Asset.
+  void addPostImportMaterializer(PostAssetImportMaterializer materializer) {
+    if (!_postImportMaterializers.contains(materializer)) {
+      _postImportMaterializers.add(materializer);
+    }
+  }
 
   /// Creates managed directories and resumes incomplete two-phase imports.
   /// Call once during local Vault startup before Explorer or sync is enabled.
@@ -61,10 +72,15 @@ final class AssetGateway {
     await initialize();
     final displayName = _normalizeDisplayName(source.displayName);
     if (source.sizeHint != null && source.sizeHint! < 0) {
-      throw ArgumentError.value(source.sizeHint, 'sizeHint', 'Cannot be negative.');
+      throw ArgumentError.value(
+        source.sizeHint,
+        'sizeHint',
+        'Cannot be negative.',
+      );
     }
     final actualCommandId = commandId ?? newUuidV7();
     final importId = actualCommandId;
+    final linkValues = links.toList(growable: false);
     final appliedImport = _vault.database.query(
       'SELECT entity_id FROM mutation_events WHERE command_id=?',
       <Object?>[actualCommandId],
@@ -73,19 +89,28 @@ final class AssetGateway {
       final existingAssetId = _string(appliedImport.first['entity_id']);
       final existingRow = _assetRow(existingAssetId);
       if (existingRow == null) {
-        throw StateError('Import command was already recorded but its Asset record is missing.');
+        throw StateError(
+          'Import command was already recorded but its Asset record is missing.',
+        );
       }
-      return AssetImportResult(
-        asset: _assetFromRow(existingRow, thresholdBytes: await _integrityThresholdBytes()),
-        reusedBlob: true,
+      final asset = _assetFromRow(
+        existingRow,
+        thresholdBytes: await _integrityThresholdBytes(),
       );
+      await _notifyPostImportMaterializers(
+        asset,
+        parentAssetId: asset.parentAssetId,
+        links: linkValues,
+      );
+      return AssetImportResult(asset: asset, reusedBlob: true);
     }
     final assetId = newUuidV7();
     final createdAt = DateTime.now().toUtc();
     final thresholdBytes = await _integrityThresholdBytes();
-    final linkValues = links.toList(growable: false);
     final metadataJson = jsonEncode(metadata);
-    final linkJson = jsonEncode(linkValues.map(_linkToJson).toList(growable: false));
+    final linkJson = jsonEncode(
+      linkValues.map(_linkToJson).toList(growable: false),
+    );
     final staged = await _store.stageImport(source: source, importId: importId);
     final assetJson = jsonEncode(<String, Object?>{
       'asset_id': assetId,
@@ -102,130 +127,148 @@ final class AssetGateway {
 
     try {
       return await _withBlobLock(staged.blobSha256, () async {
-      await _rejectIfGcClaimed(staged.blobSha256);
-      final existing = _blobRow(staged.blobSha256);
-      if (existing != null && _string(existing['state']) == 'committed') {
-        final existingFile = _store.blobFile(staged.blobSha256);
-        if (await existingFile.exists()) {
-          final actualHash = await _store.fullHash(staged.blobSha256);
-          if (actualHash != staged.blobSha256) {
-            await _quarantineMismatch(staged.blobSha256, 'CAS object did not match its SHA-256.');
-            // An exact re-import can restore the expected immutable bytes after
-            // the corrupt copy has been isolated; it never adopts the bad bytes.
+        await _rejectIfGcClaimed(staged.blobSha256);
+        final existing = _blobRow(staged.blobSha256);
+        if (existing != null && _string(existing['state']) == 'committed') {
+          final existingFile = _store.blobFile(staged.blobSha256);
+          if (await existingFile.exists()) {
+            final actualHash = await _store.fullHash(staged.blobSha256);
+            if (actualHash != staged.blobSha256) {
+              await _quarantineMismatch(
+                staged.blobSha256,
+                'CAS object did not match its SHA-256.',
+              );
+              // An exact re-import can restore the expected immutable bytes after
+              // the corrupt copy has been isolated; it never adopts the bad bytes.
+            } else {
+              await _store.deleteStaging(staged.stagingRelativePath);
+              final asset = await _commitAssetOnly(
+                assetId: assetId,
+                blobSha256: staged.blobSha256,
+                byteSize: staged.byteSize,
+                displayName: displayName,
+                mediaType: source.mediaType,
+                kind: kind,
+                parentAssetId: parentAssetId,
+                createdAt: createdAt,
+                thresholdBytes: thresholdBytes,
+                metadata: metadata,
+                links: linkValues,
+                commandId: actualCommandId,
+                reusedBlob: true,
+              );
+              await _notifyPostImportMaterializers(
+                asset,
+                parentAssetId: parentAssetId,
+                links: linkValues,
+              );
+              return AssetImportResult(asset: asset, reusedBlob: true);
+            }
           } else {
-            await _store.deleteStaging(staged.stagingRelativePath);
-            final asset = await _commitAssetOnly(
-              assetId: assetId,
-              blobSha256: staged.blobSha256,
-              byteSize: staged.byteSize,
-              displayName: displayName,
-              mediaType: source.mediaType,
-              kind: kind,
-              parentAssetId: parentAssetId,
-              createdAt: createdAt,
-              thresholdBytes: thresholdBytes,
-              metadata: metadata,
-              links: linkValues,
-              commandId: actualCommandId,
-              reusedBlob: true,
-            );
-            return AssetImportResult(asset: asset, reusedBlob: true);
+            await _setBlobState(staged.blobSha256, 'missing');
           }
-        } else {
-          await _setBlobState(staged.blobSha256, 'missing');
         }
-      }
 
-      // Record the intent before publishing the file. If the process stops
-      // after this point, initialize() can finish the CAS rename and commit.
-      _vault.database.transaction((tx) {
-        final gcClaims = tx.query(
-          'SELECT claim_id FROM asset_blob_gc_claims WHERE blob_sha256=?',
-          <Object?>[staged.blobSha256],
-        );
-        if (gcClaims.isNotEmpty) {
-          throw StateError('CAS Blob is being permanently released; retry import later.');
-        }
-        final current = tx.query(
-          'SELECT state FROM blob_objects WHERE sha256 = ?',
-          <Object?>[staged.blobSha256],
-        );
-        if (current.isEmpty) {
-          tx.execute(
-            '''INSERT INTO blob_objects
+        // Record the intent before publishing the file. If the process stops
+        // after this point, initialize() can finish the CAS rename and commit.
+        _vault.database.transaction((tx) {
+          final gcClaims = tx.query(
+            'SELECT claim_id FROM asset_blob_gc_claims WHERE blob_sha256=?',
+            <Object?>[staged.blobSha256],
+          );
+          if (gcClaims.isNotEmpty) {
+            throw StateError(
+              'CAS Blob is being permanently released; retry import later.',
+            );
+          }
+          final current = tx.query(
+            'SELECT state FROM blob_objects WHERE sha256 = ?',
+            <Object?>[staged.blobSha256],
+          );
+          if (current.isEmpty) {
+            tx.execute(
+              '''INSERT INTO blob_objects
                (sha256, byte_size, relative_path, state, imported_at_utc,
                 last_full_verified_at, last_fast_checked_at, last_known_size,
                 last_known_mtime_ns, last_file_id, threshold_at_import)
                VALUES (?, ?, ?, 'staged', ?, NULL, NULL, ?, ?, ?, ?)''',
-            <Object?>[
-              staged.blobSha256,
-              staged.byteSize,
-              _store.objectRelativePath(staged.blobSha256),
-              createdAt.toIso8601String(),
-              staged.fingerprint.size,
-              staged.fingerprint.mtimeNs,
-              staged.fingerprint.fileId,
-              thresholdBytes,
-            ],
-          );
-        } else if (_string(current.first['state']) != 'committed') {
-          tx.execute(
-            '''UPDATE blob_objects SET state = 'staged', relative_path = ?, byte_size = ?,
+              <Object?>[
+                staged.blobSha256,
+                staged.byteSize,
+                _store.objectRelativePath(staged.blobSha256),
+                createdAt.toIso8601String(),
+                staged.fingerprint.size,
+                staged.fingerprint.mtimeNs,
+                staged.fingerprint.fileId,
+                thresholdBytes,
+              ],
+            );
+          } else if (_string(current.first['state']) != 'committed') {
+            tx.execute(
+              '''UPDATE blob_objects SET state = 'staged', relative_path = ?, byte_size = ?,
                  last_known_size = ?, last_known_mtime_ns = ?, last_file_id = ?,
                  threshold_at_import = ? WHERE sha256 = ?''',
-            <Object?>[
-              _store.objectRelativePath(staged.blobSha256),
-              staged.byteSize,
-              staged.fingerprint.size,
-              staged.fingerprint.mtimeNs,
-              staged.fingerprint.fileId,
-              thresholdBytes,
-              staged.blobSha256,
-            ],
-          );
-        }
-        tx.execute(
-          '''INSERT OR REPLACE INTO pending_asset_imports
+              <Object?>[
+                _store.objectRelativePath(staged.blobSha256),
+                staged.byteSize,
+                staged.fingerprint.size,
+                staged.fingerprint.mtimeNs,
+                staged.fingerprint.fileId,
+                thresholdBytes,
+                staged.blobSha256,
+              ],
+            );
+          }
+          tx.execute(
+            '''INSERT OR REPLACE INTO pending_asset_imports
              (import_id, blob_sha256, staging_relative_path, asset_id, asset_json,
               link_refs_json, command_id, created_at_utc)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
-          <Object?>[
-            importId,
-            staged.blobSha256,
-            staged.stagingRelativePath,
-            assetId,
-            assetJson,
-            linkJson,
-            actualCommandId,
-            createdAt.toIso8601String(),
-          ],
-        );
-      });
+            <Object?>[
+              importId,
+              staged.blobSha256,
+              staged.stagingRelativePath,
+              assetId,
+              assetJson,
+              linkJson,
+              actualCommandId,
+              createdAt.toIso8601String(),
+            ],
+          );
+        });
 
-      try {
-        final published = await _store.publish(staged);
-        final asset = _commitPendingImport(
-          importId: importId,
-          assetId: assetId,
-          blobSha256: staged.blobSha256,
-          byteSize: staged.byteSize,
-          displayName: displayName,
-          mediaType: source.mediaType,
-          kind: kind,
-          parentAssetId: parentAssetId,
-          createdAt: createdAt,
-          thresholdBytes: thresholdBytes,
-          metadata: metadata,
-          links: linkValues,
-          commandId: actualCommandId,
-          published: published,
-        );
-        return AssetImportResult(asset: asset, reusedBlob: published.reusedExisting);
-      } catch (_) {
-        // A CAS file published before a failed DB commit is deliberately left
-        // in place. The pending import record makes recovery deterministic.
-        rethrow;
-      }
+        try {
+          final published = await _store.publish(staged);
+          final asset = _commitPendingImport(
+            importId: importId,
+            assetId: assetId,
+            blobSha256: staged.blobSha256,
+            byteSize: staged.byteSize,
+            displayName: displayName,
+            mediaType: source.mediaType,
+            kind: kind,
+            parentAssetId: parentAssetId,
+            createdAt: createdAt,
+            thresholdBytes: thresholdBytes,
+            metadata: metadata,
+            links: linkValues,
+            commandId: actualCommandId,
+            published: published,
+          );
+          await _notifyPostImportMaterializers(
+            asset,
+            parentAssetId: parentAssetId,
+            links: linkValues,
+          );
+          return AssetImportResult(
+            asset: asset,
+            reusedBlob: published.reusedExisting,
+          );
+        } catch (_) {
+          // A CAS file published before a failed DB commit is deliberately left
+          // in place. The pending import record makes recovery deterministic.
+          rethrow;
+        }
       });
     } catch (_) {
       final pending = _vault.database.query(
@@ -239,6 +282,27 @@ final class AssetGateway {
     }
   }
 
+  Future<void> _notifyPostImportMaterializers(
+    AssetRecord asset, {
+    required AssetId? parentAssetId,
+    required List<AssetLinkRef> links,
+  }) async {
+    for (final materializer in List<PostAssetImportMaterializer>.of(
+      _postImportMaterializers,
+    )) {
+      try {
+        await materializer(
+          asset,
+          parentAssetId: parentAssetId,
+          links: List<AssetLinkRef>.unmodifiable(links),
+        );
+      } on Object {
+        // The Asset is already durably committed. A browse copy is a
+        // regenerable local export and cannot change the authoritative CAS.
+      }
+    }
+  }
+
   /// Receives a remote immutable Blob into this device's CAS without applying
   /// the remote event or inventing a local Asset record. The retention row
   /// keeps it safe until an approved materializer links/releases it.
@@ -249,8 +313,11 @@ final class AssetGateway {
     required Stream<List<int>> content,
   }) async {
     await initialize();
-    if (!RegExp(r'^[a-f0-9]{64}$').hasMatch(expectedSha256) || expectedBytes < 0) {
-      throw ArgumentError('A lowercase SHA-256 and non-negative byte size are required.');
+    if (!RegExp(r'^[a-f0-9]{64}$').hasMatch(expectedSha256) ||
+        expectedBytes < 0) {
+      throw ArgumentError(
+        'A lowercase SHA-256 and non-negative byte size are required.',
+      );
     }
     final importId = newUuidV7();
     final staged = await _store.stageImport(
@@ -261,7 +328,8 @@ final class AssetGateway {
       ),
       importId: importId,
     );
-    if (staged.blobSha256 != expectedSha256 || staged.byteSize != expectedBytes) {
+    if (staged.blobSha256 != expectedSha256 ||
+        staged.byteSize != expectedBytes) {
       await _store.deleteStaging(staged.stagingRelativePath);
       throw AssetIntegrityException(
         assetId: 'sync:$sourceTargetId',
@@ -274,15 +342,25 @@ final class AssetGateway {
       final existing = _blobRow(expectedSha256);
       final casFile = _store.blobFile(expectedSha256);
       if (await casFile.exists()) {
-        final validExisting = await casFile.length() == expectedBytes &&
+        final validExisting =
+            await casFile.length() == expectedBytes &&
             await _store.fullHash(expectedSha256) == expectedSha256;
-        if (validExisting && existing != null && _string(existing['state']) == 'committed') {
+        if (validExisting &&
+            existing != null &&
+            _string(existing['state']) == 'committed') {
           await _store.deleteStaging(staged.stagingRelativePath);
-          _retainReceivedBlob(expectedSha256, sourceTargetId, DateTime.now().toUtc());
+          _retainReceivedBlob(
+            expectedSha256,
+            sourceTargetId,
+            DateTime.now().toUtc(),
+          );
           return;
         }
         if (!validExisting) {
-          await _quarantineMismatch(expectedSha256, 'Local CAS bytes failed verification before remote repair.');
+          await _quarantineMismatch(
+            expectedSha256,
+            'Local CAS bytes failed verification before remote repair.',
+          );
         }
       }
 
@@ -290,22 +368,40 @@ final class AssetGateway {
       final now = DateTime.now().toUtc();
       final thresholdBytes = await _integrityThresholdBytes();
       _vault.database.transaction((tx) {
-        if (tx.query('SELECT 1 FROM asset_blob_gc_claims WHERE blob_sha256=?', [expectedSha256]).isNotEmpty) {
-          throw StateError('Blob GC currently holds a deletion claim for $expectedSha256.');
+        if (tx.query('SELECT 1 FROM asset_blob_gc_claims WHERE blob_sha256=?', [
+          expectedSha256,
+        ]).isNotEmpty) {
+          throw StateError(
+            'Blob GC currently holds a deletion claim for $expectedSha256.',
+          );
         }
         if (existing == null) {
           tx.execute(
             'INSERT INTO blob_objects(sha256,byte_size,relative_path,state,imported_at_utc,last_known_size,'
             'last_known_mtime_ns,last_file_id,threshold_at_import,staging_path,integrity_policy_snapshot) '
             'VALUES(?,?,?,\'staged\',?,?,?,?,?,?,?)',
-            [expectedSha256, expectedBytes, relativePath, now.toIso8601String(), staged.fingerprint.size,
-              staged.fingerprint.mtimeNs, staged.fingerprint.fileId, thresholdBytes,
-              staged.stagingRelativePath, jsonEncode({'source': 'sync', 'target_id': sourceTargetId})],
+            [
+              expectedSha256,
+              expectedBytes,
+              relativePath,
+              now.toIso8601String(),
+              staged.fingerprint.size,
+              staged.fingerprint.mtimeNs,
+              staged.fingerprint.fileId,
+              thresholdBytes,
+              staged.stagingRelativePath,
+              jsonEncode({'source': 'sync', 'target_id': sourceTargetId}),
+            ],
           );
         } else {
           tx.execute(
             "UPDATE blob_objects SET state='staged',staging_path=?,byte_size=?,relative_path=? WHERE sha256=?",
-            [staged.stagingRelativePath, expectedBytes, relativePath, expectedSha256],
+            [
+              staged.stagingRelativePath,
+              expectedBytes,
+              relativePath,
+              expectedSha256,
+            ],
           );
         }
         tx.execute(
@@ -314,7 +410,13 @@ final class AssetGateway {
           'ON CONFLICT(sha256) DO UPDATE SET staging_relative_path=excluded.staging_relative_path,'
           'byte_size=excluded.byte_size,created_at_utc=excluded.created_at_utc,'
           'source_target_id=excluded.source_target_id',
-          [expectedSha256, staged.stagingRelativePath, expectedBytes, now.toIso8601String(), sourceTargetId],
+          [
+            expectedSha256,
+            staged.stagingRelativePath,
+            expectedBytes,
+            now.toIso8601String(),
+            sourceTargetId,
+          ],
         );
         return null;
       });
@@ -324,10 +426,19 @@ final class AssetGateway {
         tx.execute(
           "UPDATE blob_objects SET state='committed',relative_path=?,byte_size=?,staging_path=NULL,"
           'last_full_verified_at=?,last_known_size=?,last_known_mtime_ns=?,last_file_id=? WHERE sha256=?',
-          [published.relativePath, published.byteSize, now.toIso8601String(), published.fingerprint.size,
-            published.fingerprint.mtimeNs, published.fingerprint.fileId, expectedSha256],
+          [
+            published.relativePath,
+            published.byteSize,
+            now.toIso8601String(),
+            published.fingerprint.size,
+            published.fingerprint.mtimeNs,
+            published.fingerprint.fileId,
+            expectedSha256,
+          ],
         );
-        tx.execute('DELETE FROM pending_sync_blobs WHERE sha256=?', [expectedSha256]);
+        tx.execute('DELETE FROM pending_sync_blobs WHERE sha256=?', [
+          expectedSha256,
+        ]);
         tx.execute(
           'INSERT INTO sync_received_blobs(sha256,source_target_id,received_at_utc,state) VALUES(?,?,?,?) '
           'ON CONFLICT(sha256) DO UPDATE SET source_target_id=excluded.source_target_id,'
@@ -357,7 +468,8 @@ final class AssetGateway {
   }) async {
     await initialize();
     final row = _blobRow(blobSha256);
-    if (row == null || _string(row['state']) != 'committed' ||
+    if (row == null ||
+        _string(row['state']) != 'committed' ||
         _int(row['byte_size']) != expectedBytes) {
       throw AssetMissingException('blob:$blobSha256');
     }
@@ -382,8 +494,12 @@ final class AssetGateway {
           verifySha256: true,
         );
       }
-      if (snapshot.actualSha256 != blobSha256 || snapshot.byteSize != expectedBytes) {
-        _vault.database.execute("UPDATE blob_objects SET state='mismatch' WHERE sha256=?", [blobSha256]);
+      if (snapshot.actualSha256 != blobSha256 ||
+          snapshot.byteSize != expectedBytes) {
+        _vault.database.execute(
+          "UPDATE blob_objects SET state='mismatch' WHERE sha256=?",
+          [blobSha256],
+        );
         _writeIntegrityCheck(
           blobSha256,
           IntegrityCheckMode.fullSha256,
@@ -403,8 +519,12 @@ final class AssetGateway {
       }
       _vault.database.execute(
         'UPDATE blob_objects SET last_full_verified_at=?,last_known_size=?,last_known_mtime_ns=? WHERE sha256=?',
-        [DateTime.now().toUtc().toIso8601String(), snapshot.fingerprint.size,
-          snapshot.fingerprint.mtimeNs, blobSha256],
+        [
+          DateTime.now().toUtc().toIso8601String(),
+          snapshot.fingerprint.size,
+          snapshot.fingerprint.mtimeNs,
+          blobSha256,
+        ],
       );
       _writeIntegrityCheck(
         blobSha256,
@@ -414,7 +534,10 @@ final class AssetGateway {
         <String, Object?>{'during': 'remote_event_projection'},
       );
     } on AssetStoreMetadataMismatchException catch (error) {
-      _vault.database.execute("UPDATE blob_objects SET state='mismatch' WHERE sha256=?", [blobSha256]);
+      _vault.database.execute(
+        "UPDATE blob_objects SET state='mismatch' WHERE sha256=?",
+        [blobSha256],
+      );
       _writeIntegrityCheck(
         blobSha256,
         IntegrityCheckMode.fullSha256,
@@ -433,7 +556,10 @@ final class AssetGateway {
         actualSha256: 'unavailable (snapshot changed during verification)',
       );
     } on FileSystemException {
-      _markBlobMissing(blobSha256, 'CAS object is missing before remote event projection.');
+      _markBlobMissing(
+        blobSha256,
+        'CAS object is missing before remote event projection.',
+      );
       throw AssetMissingException('blob:$blobSha256');
     } finally {
       await snapshot?.dispose();
@@ -465,18 +591,22 @@ final class AssetGateway {
     for (final row in pending) {
       final sha = _string(row['sha256']);
       final expectedBytes = _int(row['byte_size']) ?? -1;
-      if (expectedBytes < 0) throw StateError('Pending synchronized Blob has an invalid byte size.');
+      if (expectedBytes < 0)
+        throw StateError('Pending synchronized Blob has an invalid byte size.');
       final relative = _string(row['staging_relative_path']);
       final stagedFile = File(p.join(_store.rootDirectory.path, relative));
       final destination = _store.blobFile(sha);
       try {
         if (await destination.exists()) {
-          if (await destination.length() != expectedBytes || await _store.fullHash(sha) != sha) {
+          if (await destination.length() != expectedBytes ||
+              await _store.fullHash(sha) != sha) {
             throw AssetStoreCollisionException(sha);
           }
         } else {
-          if (!await stagedFile.exists() || await stagedFile.length() != expectedBytes ||
-              (await sha256.bind(stagedFile.openRead()).first).toString() != sha) {
+          if (!await stagedFile.exists() ||
+              await stagedFile.length() != expectedBytes ||
+              (await sha256.bind(stagedFile.openRead()).first).toString() !=
+                  sha) {
             throw AssetMissingException(sha);
           }
           final stat = await stagedFile.stat();
@@ -496,8 +626,14 @@ final class AssetGateway {
           tx.execute(
             "UPDATE blob_objects SET state='committed',relative_path=?,staging_path=NULL,last_full_verified_at=?,"
             'last_known_size=?,last_known_mtime_ns=?,last_file_id=? WHERE sha256=?',
-            [_store.objectRelativePath(sha), now.toIso8601String(), fingerprint.size, fingerprint.mtimeNs,
-              fingerprint.fileId, sha],
+            [
+              _store.objectRelativePath(sha),
+              now.toIso8601String(),
+              fingerprint.size,
+              fingerprint.mtimeNs,
+              fingerprint.fileId,
+              sha,
+            ],
           );
           tx.execute('DELETE FROM pending_sync_blobs WHERE sha256=?', [sha]);
           tx.execute(
@@ -511,7 +647,10 @@ final class AssetGateway {
       } catch (error) {
         _vault.database.transaction((tx) {
           final state = error is AssetMissingException ? 'missing' : 'mismatch';
-          tx.execute('UPDATE blob_objects SET state=? WHERE sha256=? AND state=\'staged\'', [state, sha]);
+          tx.execute(
+            'UPDATE blob_objects SET state=? WHERE sha256=? AND state=\'staged\'',
+            [state, sha],
+          );
           tx.execute('DELETE FROM pending_sync_blobs WHERE sha256=?', [sha]);
           return null;
         });
@@ -544,34 +683,48 @@ final class AssetGateway {
         clauses.add("a.deleted_at_utc IS NULL AND a.kind = 'raw'");
         break;
       case VirtualFolderKind.derived:
-        clauses.add("a.deleted_at_utc IS NULL AND a.kind IN ('derived','thumbnail')");
+        clauses.add(
+          "a.deleted_at_utc IS NULL AND a.kind IN ('derived','thumbnail')",
+        );
         break;
       case VirtualFolderKind.reports:
         clauses.add("a.deleted_at_utc IS NULL AND a.kind = 'report'");
         break;
       case VirtualFolderKind.orphans:
-        clauses.add('a.deleted_at_utc IS NULL AND NOT EXISTS '
-            '(SELECT 1 FROM asset_links l WHERE l.asset_id=a.asset_id AND l.removed_at_utc IS NULL)');
+        clauses.add(
+          'a.deleted_at_utc IS NULL AND NOT EXISTS '
+          '(SELECT 1 FROM asset_links l WHERE l.asset_id=a.asset_id AND l.removed_at_utc IS NULL)',
+        );
         break;
       case VirtualFolderKind.localOnly:
-        clauses.add('a.deleted_at_utc IS NULL AND b.state = \'committed\' AND NOT EXISTS '
-            '(SELECT 1 FROM remote_replicas r WHERE r.blob_sha256=b.sha256 '
-            "AND r.state IN ('verified','remote_available','uploaded'))");
+        clauses.add(
+          'a.deleted_at_utc IS NULL AND b.state = \'committed\' AND NOT EXISTS '
+          '(SELECT 1 FROM remote_replicas r WHERE r.blob_sha256=b.sha256 '
+          "AND r.state IN ('verified','remote_available','uploaded'))",
+        );
         break;
       case VirtualFolderKind.remoteOnly:
-        clauses.add("a.deleted_at_utc IS NULL AND b.state IN ('missing','purged') AND EXISTS "
-            '(SELECT 1 FROM remote_replicas r WHERE r.blob_sha256=b.sha256 '
-            "AND r.state IN ('verified','remote_available','uploaded'))");
+        clauses.add(
+          "a.deleted_at_utc IS NULL AND b.state IN ('missing','purged') AND EXISTS "
+          '(SELECT 1 FROM remote_replicas r WHERE r.blob_sha256=b.sha256 '
+          "AND r.state IN ('verified','remote_available','uploaded'))",
+        );
         break;
       case VirtualFolderKind.integrityWarnings:
-        clauses.add("a.deleted_at_utc IS NULL AND b.state IN ('missing','mismatch','staged')");
+        clauses.add(
+          "a.deleted_at_utc IS NULL AND b.state IN ('missing','mismatch','staged')",
+        );
         break;
       case VirtualFolderKind.custom:
         if (query.customFolderId == null) {
-          throw ArgumentError('customFolderId is required for a custom virtual folder.');
+          throw ArgumentError(
+            'customFolderId is required for a custom virtual folder.',
+          );
         }
-        clauses.add('a.deleted_at_utc IS NULL AND EXISTS '
-            '(SELECT 1 FROM asset_folder_memberships m WHERE m.asset_id=a.asset_id AND m.folder_id=?)');
+        clauses.add(
+          'a.deleted_at_utc IS NULL AND EXISTS '
+          '(SELECT 1 FROM asset_folder_memberships m WHERE m.asset_id=a.asset_id AND m.folder_id=?)',
+        );
         bindings.add(query.customFolderId);
         break;
       case VirtualFolderKind.all:
@@ -609,8 +762,10 @@ final class AssetGateway {
       bindings.add(query.createdBeforeUtc!.toUtc().toIso8601String());
     }
     if (query.targetType != null && query.targetId != null) {
-      clauses.add('EXISTS (SELECT 1 FROM asset_links l WHERE l.asset_id=a.asset_id '
-          'AND l.entity_type=? AND l.entity_id=? AND l.removed_at_utc IS NULL)');
+      clauses.add(
+        'EXISTS (SELECT 1 FROM asset_links l WHERE l.asset_id=a.asset_id '
+        'AND l.entity_type=? AND l.entity_id=? AND l.removed_at_utc IS NULL)',
+      );
       bindings
         ..add(query.targetType)
         ..add(query.targetId);
@@ -655,17 +810,23 @@ final class AssetGateway {
            WHERE o.content_sha256=? AND s.state IN ('complete','verified')''',
         <Object?>[sha],
       );
-      items.add(ExplorerAsset(
-        asset: _assetFromRow(row, thresholdBytes: threshold),
-        activeLinkCount: links.length,
-        referenceLabels: links
-            .map((link) => '${_string(link['entity_type'])}:${_string(link['entity_id'])}/${_string(link['relation'])}')
-            .toList(growable: false),
-        remoteReplicaStates: <String, String>{
-          for (final replica in replicas) _string(replica['target_id']): _string(replica['state']),
-        },
-        retainedBackupCount: _int(backup.firstOrNull?['retained_count']) ?? 0,
-      ));
+      items.add(
+        ExplorerAsset(
+          asset: _assetFromRow(row, thresholdBytes: threshold),
+          activeLinkCount: links.length,
+          referenceLabels: links
+              .map(
+                (link) =>
+                    '${_string(link['entity_type'])}:${_string(link['entity_id'])}/${_string(link['relation'])}',
+              )
+              .toList(growable: false),
+          remoteReplicaStates: <String, String>{
+            for (final replica in replicas)
+              _string(replica['target_id']): _string(replica['state']),
+          },
+          retainedBackupCount: _int(backup.firstOrNull?['retained_count']) ?? 0,
+        ),
+      );
     }
     return ExplorerPage(
       items: items,
@@ -695,7 +856,8 @@ final class AssetGateway {
     final blob = _blobRow(asset.blobSha256);
     if (blob == null) throw AssetMissingException(assetId);
     final blobState = _string(blob['state']);
-    if (blobState == 'missing' || blobState == 'purged') throw AssetMissingException(assetId);
+    if (blobState == 'missing' || blobState == 'purged')
+      throw AssetMissingException(assetId);
     if (blobState == 'mismatch') {
       throw AssetIntegrityException(
         assetId: assetId,
@@ -703,7 +865,8 @@ final class AssetGateway {
         actualSha256: 'unavailable',
       );
     }
-    final fullHash = requireFullSha256 ||
+    final fullHash =
+        requireFullSha256 ||
         fullVerifyLargeFilesOnEveryOpen ||
         asset.byteSize <= asset.integrityThresholdBytes;
     final leaseId = newUuidV7();
@@ -774,7 +937,8 @@ final class AssetGateway {
           asset.byteSize,
           <String, Object?>{
             'during': 'logical_open',
-            'message': 'Metadata quick check passed; this is not SHA-256 verification.',
+            'message':
+                'Metadata quick check passed; this is not SHA-256 verification.',
           },
         );
       }
@@ -809,7 +973,9 @@ final class AssetGateway {
         bytesChecked: 0,
         message: error.message,
       );
-      throw StateError('Stored object changed; opening is blocked. ${error.message}');
+      throw StateError(
+        'Stored object changed; opening is blocked. ${error.message}',
+      );
     } on FileSystemException {
       _markBlobMissing(asset.blobSha256, 'CAS object disappeared during open.');
       throw AssetMissingException(assetId);
@@ -882,6 +1048,24 @@ final class AssetGateway {
     }
   }
 
+  /// Checks whether a user-visible file is the same filesystem object as a
+  /// managed CAS blob (for example, a hard link). The CAS path remains private
+  /// to this gateway.
+  Future<bool> isSamePhysicalFileAsBlob({
+    required String blobSha256,
+    required String filePath,
+  }) async {
+    await initialize();
+    final blob = _store.blobFile(blobSha256);
+    if (!await blob.exists() || !await File(filePath).exists()) {
+      throw FileSystemException(
+        'Cannot compare physical identity for a missing file.',
+        filePath,
+      );
+    }
+    return FileSystemEntity.identical(blob.path, filePath);
+  }
+
   Future<IntegrityResult> fullVerify(AssetId assetId) async {
     await initialize();
     final asset = await resolve(assetId);
@@ -906,7 +1090,10 @@ final class AssetGateway {
         verifySha256: true,
       );
     } on FileSystemException {
-      _markBlobMissing(asset.blobSha256, 'CAS object is missing during full verification.');
+      _markBlobMissing(
+        asset.blobSha256,
+        'CAS object is missing during full verification.',
+      );
       final result = IntegrityResult(
         assetId: assetId,
         blobSha256: asset.blobSha256,
@@ -925,7 +1112,8 @@ final class AssetGateway {
       );
       return result;
     } on AssetStoreMetadataMismatchException catch (error) {
-      const message = 'The CAS object changed while the full SHA-256 check was running.';
+      const message =
+          'The CAS object changed while the full SHA-256 check was running.';
       await _recordIntegrityResult(
         assetId: assetId,
         blobSha256: asset.blobSha256,
@@ -950,8 +1138,12 @@ final class AssetGateway {
     }
     final verifiedSnapshot = snapshot;
     final actual = verifiedSnapshot.actualSha256;
-    final passed = verifiedSnapshot.byteSize == asset.byteSize && actual == asset.blobSha256;
-    final status = passed ? AssetIntegrityStatus.verified : AssetIntegrityStatus.mismatch;
+    final passed =
+        verifiedSnapshot.byteSize == asset.byteSize &&
+        actual == asset.blobSha256;
+    final status = passed
+        ? AssetIntegrityStatus.verified
+        : AssetIntegrityStatus.mismatch;
     await _recordIntegrityResult(
       assetId: assetId,
       blobSha256: asset.blobSha256,
@@ -1017,17 +1209,22 @@ final class AssetGateway {
          WHERE a.blob_sha256=? AND t.state<>'acknowledged' ''',
       <Object?>[asset.blobSha256],
     );
-    final trashWithinRetention = trashAssets.where((row) {
-      final deleted = _dateTime(row['deleted_at_utc']);
-      return deleted != null && DateTime.now().toUtc().difference(deleted) < trashRetention;
-    }).toList(growable: false);
+    final trashWithinRetention = trashAssets
+        .where((row) {
+          final deleted = _dateTime(row['deleted_at_utc']);
+          return deleted != null &&
+              DateTime.now().toUtc().difference(deleted) < trashRetention;
+        })
+        .toList(growable: false);
     final leaseCount = _int(leases.firstOrNull?['lease_count']) ?? 0;
-    final pendingTombstones = (_int(tombstones.firstOrNull?['pending_count']) ?? 0) > 0;
+    final pendingTombstones =
+        (_int(tombstones.firstOrNull?['pending_count']) ?? 0) > 0;
     // References require an explicit risk confirmation, but they do not mean
     // the immutable bytes are shared. They remain visible as historical links
     // to the tombstoned Asset. Only other live/trash Assets, leases, and
     // unacknowledged remote tombstones protect the CAS object itself.
-    final eligible = activeAssets.isEmpty &&
+    final eligible =
+        activeAssets.isEmpty &&
         trashWithinRetention.isEmpty &&
         leaseCount == 0 &&
         !pendingTombstones;
@@ -1037,17 +1234,24 @@ final class AssetGateway {
       logicalBytes: asset.byteSize,
       reclaimablePhysicalBytes: eligible ? asset.byteSize : 0,
       activeLinks: links
-          .map((row) => AssetReferenceImpact(
-                targetType: _string(row['entity_type']),
-                targetId: _string(row['entity_id']),
-                role: _string(row['relation']),
-              ))
+          .map(
+            (row) => AssetReferenceImpact(
+              targetType: _string(row['entity_type']),
+              targetId: _string(row['entity_id']),
+              role: _string(row['relation']),
+            ),
+          )
           .toList(growable: false),
-      otherActiveAssetsSharingBlob: activeAssets.map((row) => _string(row['asset_id'])).toList(growable: false),
-      trashAssetsSharingBlob: trashAssets.map((row) => _string(row['asset_id'])).toList(growable: false),
+      otherActiveAssetsSharingBlob: activeAssets
+          .map((row) => _string(row['asset_id']))
+          .toList(growable: false),
+      trashAssetsSharingBlob: trashAssets
+          .map((row) => _string(row['asset_id']))
+          .toList(growable: false),
       retainedBackupCount: _int(backupRows.firstOrNull?['retained_count']) ?? 0,
       remoteReplicaStates: <String, String>{
-        for (final row in replicas) _string(row['target_id']): _string(row['state']),
+        for (final row in replicas)
+          _string(row['target_id']): _string(row['state']),
       },
       activeLeaseCount: leaseCount,
       pendingSyncTombstones: pendingTombstones,
@@ -1084,7 +1288,9 @@ final class AssetGateway {
     await initialize();
     final review = _remoteDeletionReview(sourceEventId);
     if (!review.canAccept) {
-      throw StateError('REMOTE_ASSET_DELETE_NOT_REVIEWABLE: only a pending trash request can be accepted.');
+      throw StateError(
+        'REMOTE_ASSET_DELETE_NOT_REVIEWABLE: only a pending trash request can be accepted.',
+      );
     }
     return previewDelete(review.assetId);
   }
@@ -1103,15 +1309,20 @@ final class AssetGateway {
       return review.localDeletionId!;
     }
     if (!review.canAccept) {
-      throw StateError('REMOTE_ASSET_DELETE_NOT_REVIEWABLE: only a pending trash request can be accepted.');
+      throw StateError(
+        'REMOTE_ASSET_DELETE_NOT_REVIEWABLE: only a pending trash request can be accepted.',
+      );
     }
-    return trash(AssetTrashRequest(
-      assetId: review.assetId,
-      approvalRef: approvalRef,
-      reason: 'Accepted remote deletion ${review.sourceDeletionId}: ${review.reason}',
-      commandId: commandId,
-      sourceEventId: sourceEventId,
-    ));
+    return trash(
+      AssetTrashRequest(
+        assetId: review.assetId,
+        approvalRef: approvalRef,
+        reason:
+            'Accepted remote deletion ${review.sourceDeletionId}: ${review.reason}',
+        commandId: commandId,
+        sourceEventId: sourceEventId,
+      ),
+    );
   }
 
   /// Keeps the local Asset and records a local rejection for a pending remote
@@ -1123,7 +1334,11 @@ final class AssetGateway {
     await initialize();
     final cleanNote = note.trim();
     if (cleanNote.isEmpty || cleanNote.length > 2000) {
-      throw ArgumentError.value(note, 'note', 'A review note of 1 to 2000 characters is required.');
+      throw ArgumentError.value(
+        note,
+        'note',
+        'A review note of 1 to 2000 characters is required.',
+      );
     }
     final now = DateTime.now().toUtc();
     _vault.database.transaction((tx) {
@@ -1132,8 +1347,12 @@ final class AssetGateway {
            WHERE source_event_id=?''',
         <Object?>[sourceEventId],
       );
-      if (rows.isEmpty || rows.single['requested_scope'] != 'trash' || rows.single['status'] != 'pending') {
-        throw StateError('REMOTE_ASSET_DELETE_NOT_REVIEWABLE: request is missing or already resolved.');
+      if (rows.isEmpty ||
+          rows.single['requested_scope'] != 'trash' ||
+          rows.single['status'] != 'pending') {
+        throw StateError(
+          'REMOTE_ASSET_DELETE_NOT_REVIEWABLE: request is missing or already resolved.',
+        );
       }
       tx.execute(
         '''UPDATE remote_asset_deletion_reviews
@@ -1152,7 +1371,11 @@ final class AssetGateway {
     await initialize();
     final cleanNote = note.trim();
     if (cleanNote.isEmpty || cleanNote.length > 2000) {
-      throw ArgumentError.value(note, 'note', 'A review note of 1 to 2000 characters is required.');
+      throw ArgumentError.value(
+        note,
+        'note',
+        'A review note of 1 to 2000 characters is required.',
+      );
     }
     final now = DateTime.now().toUtc();
     _vault.database.transaction((tx) {
@@ -1161,8 +1384,12 @@ final class AssetGateway {
            WHERE source_event_id=?''',
         <Object?>[sourceEventId],
       );
-      if (rows.isEmpty || rows.single['requested_scope'] != 'purge' || rows.single['status'] != 'audit_only') {
-        throw StateError('REMOTE_ASSET_DELETE_NOT_AUDIT: item is missing or is not a purge audit.');
+      if (rows.isEmpty ||
+          rows.single['requested_scope'] != 'purge' ||
+          rows.single['status'] != 'audit_only') {
+        throw StateError(
+          'REMOTE_ASSET_DELETE_NOT_AUDIT: item is missing or is not a purge audit.',
+        );
       }
       tx.execute(
         '''UPDATE remote_asset_deletion_reviews
@@ -1184,7 +1411,8 @@ final class AssetGateway {
          WHERE r.source_event_id=?''',
       <Object?>[sourceEventId],
     );
-    if (rows.isEmpty) throw StateError('REMOTE_ASSET_DELETE_REVIEW_MISSING: $sourceEventId');
+    if (rows.isEmpty)
+      throw StateError('REMOTE_ASSET_DELETE_REVIEW_MISSING: $sourceEventId');
     return _remoteDeletionReviewFromRow(rows.single);
   }
 
@@ -1222,7 +1450,8 @@ final class AssetGateway {
         'UPDATE assets SET deleted_at_utc=? WHERE asset_id=? AND deleted_at_utc IS NULL',
         <Object?>[now.toIso8601String(), request.assetId],
       );
-      if (assetUpdated != 1) throw StateError('Asset changed before the trash command committed.');
+      if (assetUpdated != 1)
+        throw StateError('Asset changed before the trash command committed.');
       String? sourceTargetId;
       if (request.sourceEventId != null) {
         final reviews = tx.query(
@@ -1230,9 +1459,13 @@ final class AssetGateway {
              WHERE source_event_id=?''',
           <Object?>[request.sourceEventId],
         );
-        if (reviews.isEmpty || reviews.single['asset_id'] != request.assetId ||
-            reviews.single['requested_scope'] != 'trash' || reviews.single['status'] != 'pending') {
-          throw StateError('REMOTE_ASSET_DELETE_NOT_REVIEWABLE: request is missing or already resolved.');
+        if (reviews.isEmpty ||
+            reviews.single['asset_id'] != request.assetId ||
+            reviews.single['requested_scope'] != 'trash' ||
+            reviews.single['status'] != 'pending') {
+          throw StateError(
+            'REMOTE_ASSET_DELETE_NOT_REVIEWABLE: request is missing or already resolved.',
+          );
         }
         sourceTargetId = _string(reviews.single['target_id']);
       }
@@ -1268,7 +1501,8 @@ final class AssetGateway {
           'approval_ref': request.approvalRef,
           'deleted_at_utc': now.toIso8601String(),
           'scope': 'trash',
-          if (request.sourceEventId != null) 'source_event_id': request.sourceEventId,
+          if (request.sourceEventId != null)
+            'source_event_id': request.sourceEventId,
         },
         shaRefs: <String>[asset.blobSha256],
       );
@@ -1282,9 +1516,17 @@ final class AssetGateway {
           '''UPDATE remote_asset_deletion_reviews
              SET status='accepted',local_deletion_id=?,local_approval_ref=?,reviewed_at_utc=?,resolution_note=NULL
              WHERE source_event_id=? AND status='pending' ''',
-          <Object?>[deletionId, request.approvalRef, now.toIso8601String(), request.sourceEventId],
+          <Object?>[
+            deletionId,
+            request.approvalRef,
+            now.toIso8601String(),
+            request.sourceEventId,
+          ],
         );
-        if (reviewUpdated != 1) throw StateError('Remote deletion review changed before acceptance committed.');
+        if (reviewUpdated != 1)
+          throw StateError(
+            'Remote deletion review changed before acceptance committed.',
+          );
         tx.execute(
           '''UPDATE sync_remote_events SET application_state='applied',application_error=NULL
              WHERE event_id=?''',
@@ -1311,17 +1553,26 @@ final class AssetGateway {
     if (priorDeletion != null) return priorDeletion;
     final row = _assetRow(assetId);
     if (row == null) throw AssetMissingException(assetId);
-    if (row['deleted_at_utc'] == null) throw StateError('Asset is not in the trash.');
+    if (row['deleted_at_utc'] == null)
+      throw StateError('Asset is not in the trash.');
     final now = DateTime.now().toUtc();
     final deletionId = newUuidV7();
-    final asset = _assetFromRow(row, thresholdBytes: await _integrityThresholdBytes());
+    final asset = _assetFromRow(
+      row,
+      thresholdBytes: await _integrityThresholdBytes(),
+    );
     await _withBlobLock(asset.blobSha256, () async {
       final blob = _blobRow(asset.blobSha256);
-      if (blob == null || _string(blob['state']) == 'purged' || _string(blob['state']) == 'missing') {
+      if (blob == null ||
+          _string(blob['state']) == 'purged' ||
+          _string(blob['state']) == 'missing') {
         throw AssetMissingException(assetId);
       }
       _vault.database.transaction((tx) {
-        tx.execute('UPDATE assets SET deleted_at_utc=NULL WHERE asset_id=?', <Object?>[assetId]);
+        tx.execute(
+          'UPDATE assets SET deleted_at_utc=NULL WHERE asset_id=?',
+          <Object?>[assetId],
+        );
         tx.execute(
           '''UPDATE deletion_records SET state='recovered'
              WHERE asset_id=? AND scope='trash' AND state='trashed' ''',
@@ -1336,7 +1587,13 @@ final class AssetGateway {
           '''INSERT INTO deletion_records
              (deletion_id,asset_id,scope,impact_json,state,created_at_utc,reason,confirmed_at_utc,command_id)
              VALUES (?,?,'unlink','{}','recovered',?,'Asset restored from trash',?,?)''',
-          <Object?>[deletionId, assetId, now.toIso8601String(), now.toIso8601String(), actualCommandId],
+          <Object?>[
+            deletionId,
+            assetId,
+            now.toIso8601String(),
+            now.toIso8601String(),
+            actualCommandId,
+          ],
         );
         _appendMutation(
           tx,
@@ -1390,12 +1647,18 @@ final class AssetGateway {
           'SELECT claim_id FROM asset_blob_gc_claims WHERE blob_sha256=?',
           <Object?>[asset.blobSha256],
         );
-        if (claimExists.isNotEmpty) throw StateError('A garbage-collection operation is already active.');
+        if (claimExists.isNotEmpty)
+          throw StateError('A garbage-collection operation is already active.');
         tx.execute(
           '''INSERT INTO asset_blob_gc_claims
              (blob_sha256,claim_id,claimed_at_utc,operation,deletion_id)
              VALUES (?,?,?,'purge',?)''',
-          <Object?>[asset.blobSha256, purgeClaim, now.toIso8601String(), deletionId],
+          <Object?>[
+            asset.blobSha256,
+            purgeClaim,
+            now.toIso8601String(),
+            deletionId,
+          ],
         );
         tx.execute(
           'UPDATE assets SET deleted_at_utc=COALESCE(deleted_at_utc,?) WHERE asset_id=?',
@@ -1447,8 +1710,12 @@ final class AssetGateway {
       // lease, or an unacknowledged tombstone protects the shared CAS bytes.
       // The logical Asset remains as a tombstone and historical links survive.
       final current = await previewDelete(request.assetId);
-      final hasUnexpiredOtherTrash = _hasUnexpiredOtherTrash(asset.blobSha256, request.assetId);
-      final canDeleteBlob = current.otherActiveAssetsSharingBlob.isEmpty &&
+      final hasUnexpiredOtherTrash = _hasUnexpiredOtherTrash(
+        asset.blobSha256,
+        request.assetId,
+      );
+      final canDeleteBlob =
+          current.otherActiveAssetsSharingBlob.isEmpty &&
           !hasUnexpiredOtherTrash &&
           current.activeLeaseCount == 0 &&
           !current.pendingSyncTombstones;
@@ -1478,8 +1745,10 @@ final class AssetGateway {
             },
             shaRefs: <String>[asset.blobSha256],
           );
-          tx.execute('DELETE FROM asset_blob_gc_claims WHERE blob_sha256=? AND claim_id=?',
-              <Object?>[asset.blobSha256, purgeClaim]);
+          tx.execute(
+            'DELETE FROM asset_blob_gc_claims WHERE blob_sha256=? AND claim_id=?',
+            <Object?>[asset.blobSha256, purgeClaim],
+          );
         });
       } else {
         _vault.database.transaction((tx) {
@@ -1487,8 +1756,10 @@ final class AssetGateway {
             "UPDATE deletion_records SET state='blocked' WHERE deletion_id=?",
             <Object?>[deletionId],
           );
-          tx.execute('DELETE FROM asset_blob_gc_claims WHERE blob_sha256=? AND claim_id=?',
-              <Object?>[asset.blobSha256, purgeClaim]);
+          tx.execute(
+            'DELETE FROM asset_blob_gc_claims WHERE blob_sha256=? AND claim_id=?',
+            <Object?>[asset.blobSha256, purgeClaim],
+          );
         });
       }
     });
@@ -1520,7 +1791,8 @@ final class AssetGateway {
       logicalBytes: _int(row['logical_bytes']) ?? 0,
       uniqueBlobBytes: await _store.directoryBytes(_store.objectsDirectory),
       trashBytes: _int(row['trash_bytes']) ?? 0,
-      cacheBytes: await _store.directoryBytes(cacheDirectory) +
+      cacheBytes:
+          await _store.directoryBytes(cacheDirectory) +
           await _store.directoryBytes(_store.stagingDirectory),
       remoteOnlyBytes: _int(remoteOnlyRows.firstOrNull?['bytes']) ?? 0,
       backupBytes: await _store.directoryBytes(backupDirectory),
@@ -1530,16 +1802,25 @@ final class AssetGateway {
     );
   }
 
-  Future<AssetFolderId> createVirtualFolder(String name, {AssetFolderId? parentFolderId}) async {
+  Future<AssetFolderId> createVirtualFolder(
+    String name, {
+    AssetFolderId? parentFolderId,
+  }) async {
     await initialize();
     final folderId = newUuidV7();
     final normalizedName = name.trim();
-    if (normalizedName.isEmpty) throw ArgumentError.value(name, 'name', 'Cannot be empty.');
+    if (normalizedName.isEmpty)
+      throw ArgumentError.value(name, 'name', 'Cannot be empty.');
     final now = DateTime.now().toUtc();
     _vault.database.transaction((tx) {
       tx.execute(
         'INSERT INTO asset_virtual_folders(folder_id,parent_folder_id,name,created_at_utc) VALUES (?,?,?,?)',
-        <Object?>[folderId, parentFolderId, normalizedName, now.toIso8601String()],
+        <Object?>[
+          folderId,
+          parentFolderId,
+          normalizedName,
+          now.toIso8601String(),
+        ],
       );
       _appendMutation(
         tx,
@@ -1559,7 +1840,10 @@ final class AssetGateway {
     return folderId;
   }
 
-  Future<void> addToVirtualFolder(AssetFolderId folderId, AssetId assetId) async {
+  Future<void> addToVirtualFolder(
+    AssetFolderId folderId,
+    AssetId assetId,
+  ) async {
     await initialize();
     final now = DateTime.now().toUtc();
     _vault.database.transaction((tx) {
@@ -1584,7 +1868,10 @@ final class AssetGateway {
     });
   }
 
-  Future<void> removeFromVirtualFolder(AssetFolderId folderId, AssetId assetId) async {
+  Future<void> removeFromVirtualFolder(
+    AssetFolderId folderId,
+    AssetId assetId,
+  ) async {
     await initialize();
     _vault.database.transaction((tx) {
       final changed = tx.execute(
@@ -1612,12 +1899,16 @@ final class AssetGateway {
   /// final database commit, and marks impossible entries for recovery review.
   Future<void> recoverInterruptedImports() async {
     await _store.initialize();
-    final pending = _vault.database.query('SELECT * FROM pending_asset_imports ORDER BY created_at_utc');
+    final pending = _vault.database.query(
+      'SELECT * FROM pending_asset_imports ORDER BY created_at_utc',
+    );
     for (final row in pending) {
       final importId = _string(row['import_id']);
       final sha = _string(row['blob_sha256']);
       final stagedRelative = _string(row['staging_relative_path']);
-      final stagingFile = File(p.join(_store.rootDirectory.path, stagedRelative));
+      final stagingFile = File(
+        p.join(_store.rootDirectory.path, stagedRelative),
+      );
       final expectedAssetJson = _decodeMap(_string(row['asset_json']));
       final links = _decodeList(_string(row['link_refs_json']));
       final expectedBytes = _int(expectedAssetJson['bytes']) ?? 0;
@@ -1626,7 +1917,8 @@ final class AssetGateway {
       try {
         if (stagedExists) {
           final stagedSha = await sha256Digest(stagingFile);
-          if (stagedSha != sha || (await stagingFile.length()) != expectedBytes) {
+          if (stagedSha != sha ||
+              (await stagingFile.length()) != expectedBytes) {
             await _setBlobState(sha, 'mismatch');
             continue;
           }
@@ -1645,7 +1937,10 @@ final class AssetGateway {
         }
         final actual = await _store.fullHash(sha);
         if (actual != sha) {
-          await _quarantineMismatch(sha, 'Interrupted import CAS bytes failed SHA-256.');
+          await _quarantineMismatch(
+            sha,
+            'Interrupted import CAS bytes failed SHA-256.',
+          );
           continue;
         }
         final publishedStat = await _store.blobFile(sha).stat();
@@ -1691,7 +1986,10 @@ final class AssetGateway {
       if (operation != 'purge' || deletionId == null) {
         _vault.database.transaction((tx) {
           if (!exists) {
-            tx.execute("UPDATE blob_objects SET state='purged' WHERE sha256=?", <Object?>[sha]);
+            tx.execute(
+              "UPDATE blob_objects SET state='purged' WHERE sha256=?",
+              <Object?>[sha],
+            );
             _appendMutation(
               tx,
               commandId: newUuidV7(),
@@ -1720,7 +2018,8 @@ final class AssetGateway {
         'SELECT asset_id,state FROM deletion_records WHERE deletion_id=? AND scope=\'purge\'',
         <Object?>[deletionId],
       );
-      if (deletionRows.isEmpty || _string(deletionRows.single['state']) != 'requested') {
+      if (deletionRows.isEmpty ||
+          _string(deletionRows.single['state']) != 'requested') {
         _vault.database.execute(
           'DELETE FROM asset_blob_gc_claims WHERE blob_sha256=? AND claim_id=?',
           <Object?>[sha, claimId],
@@ -1731,7 +2030,10 @@ final class AssetGateway {
       if (!exists) {
         final now = DateTime.now().toUtc().toIso8601String();
         _vault.database.transaction((tx) {
-          tx.execute("UPDATE blob_objects SET state='missing' WHERE sha256=?", <Object?>[sha]);
+          tx.execute(
+            "UPDATE blob_objects SET state='missing' WHERE sha256=?",
+            <Object?>[sha],
+          );
           tx.execute(
             '''UPDATE deletion_records SET state='blocked',
                  reason=COALESCE(reason,'') || '; interrupted purge found no local object to verify'
@@ -1780,7 +2082,10 @@ final class AssetGateway {
         final releasedBytes = await _store.deleteBlob(sha);
         final now = DateTime.now().toUtc().toIso8601String();
         _vault.database.transaction((tx) {
-          tx.execute("UPDATE blob_objects SET state='purged' WHERE sha256=?", <Object?>[sha]);
+          tx.execute(
+            "UPDATE blob_objects SET state='purged' WHERE sha256=?",
+            <Object?>[sha],
+          );
           tx.execute(
             "UPDATE deletion_records SET state='purged' WHERE deletion_id=? AND state='requested'",
             <Object?>[deletionId],
@@ -1813,7 +2118,8 @@ final class AssetGateway {
   Future<int> collectGarbage({DateTime? atUtc}) async {
     await initialize();
     final now = (atUtc ?? DateTime.now().toUtc()).toUtc();
-    final candidates = _vault.database.query('''
+    final candidates = _vault.database.query(
+      '''
       SELECT b.sha256,b.byte_size FROM blob_objects b
       WHERE b.state='committed'
         AND NOT EXISTS (SELECT 1 FROM assets a WHERE a.blob_sha256=b.sha256 AND a.deleted_at_utc IS NULL)
@@ -1826,10 +2132,12 @@ final class AssetGateway {
         AND NOT EXISTS (SELECT 1 FROM pending_sync_blobs p WHERE p.sha256=b.sha256)
         AND NOT EXISTS (SELECT 1 FROM sync_received_blobs r WHERE r.sha256=b.sha256 AND r.state='available')
         AND NOT EXISTS (SELECT 1 FROM asset_blob_gc_claims c WHERE c.blob_sha256=b.sha256)
-    ''', <Object?>[
-      now.subtract(trashRetention).toIso8601String(),
-      now.toIso8601String(),
-    ]);
+    ''',
+      <Object?>[
+        now.subtract(trashRetention).toIso8601String(),
+        now.toIso8601String(),
+      ],
+    );
     var released = 0;
     for (final candidate in candidates) {
       final sha = _string(candidate['sha256']);
@@ -1837,7 +2145,8 @@ final class AssetGateway {
         final claimId = newUuidV7();
         final nowText = now.toIso8601String();
         final claimed = _vault.database.transaction((tx) {
-          final stillEligible = tx.query('''
+          final stillEligible = tx.query(
+            '''
             SELECT b.sha256 FROM blob_objects b
             WHERE b.sha256=? AND b.state='committed'
               AND NOT EXISTS (SELECT 1 FROM assets a WHERE a.blob_sha256=b.sha256 AND a.deleted_at_utc IS NULL)
@@ -1850,11 +2159,13 @@ final class AssetGateway {
               AND NOT EXISTS (SELECT 1 FROM pending_sync_blobs p WHERE p.sha256=b.sha256)
               AND NOT EXISTS (SELECT 1 FROM sync_received_blobs r WHERE r.sha256=b.sha256 AND r.state='available')
               AND NOT EXISTS (SELECT 1 FROM asset_blob_gc_claims c WHERE c.blob_sha256=b.sha256)
-          ''', <Object?>[
-            sha,
-            now.subtract(trashRetention).toIso8601String(),
-            nowText,
-          ]);
+          ''',
+            <Object?>[
+              sha,
+              now.subtract(trashRetention).toIso8601String(),
+              nowText,
+            ],
+          );
           if (stillEligible.isEmpty) return false;
           tx.execute(
             'INSERT INTO asset_blob_gc_claims(blob_sha256,claim_id,claimed_at_utc) VALUES (?,?,?)',
@@ -1866,8 +2177,14 @@ final class AssetGateway {
         try {
           final releasedBytes = await _store.deleteBlob(sha);
           _vault.database.transaction((tx) {
-            tx.execute("UPDATE blob_objects SET state='purged' WHERE sha256=?", <Object?>[sha]);
-            tx.execute('DELETE FROM asset_blob_gc_claims WHERE blob_sha256=? AND claim_id=?', <Object?>[sha, claimId]);
+            tx.execute(
+              "UPDATE blob_objects SET state='purged' WHERE sha256=?",
+              <Object?>[sha],
+            );
+            tx.execute(
+              'DELETE FROM asset_blob_gc_claims WHERE blob_sha256=? AND claim_id=?',
+              <Object?>[sha, claimId],
+            );
             _appendMutation(
               tx,
               commandId: newUuidV7(),
@@ -1907,8 +2224,11 @@ final class AssetGateway {
     );
     if (rows.isEmpty) return null;
     final prior = rows.single;
-    if (_string(prior['asset_id']) != assetId || _string(prior['scope']) != scope) {
-      throw StateError('Command id was already used for a different Asset deletion.');
+    if (_string(prior['asset_id']) != assetId ||
+        _string(prior['scope']) != scope) {
+      throw StateError(
+        'Command id was already used for a different Asset deletion.',
+      );
     }
     return _string(prior['deletion_id']);
   }
@@ -1933,7 +2253,10 @@ final class AssetGateway {
         _int(assetJson['threshold_bytes']) ?? defaultIntegrityThresholdBytes,
         now,
       );
-      final existingAsset = tx.query('SELECT asset_id FROM assets WHERE asset_id=?', <Object?>[assetId]);
+      final existingAsset = tx.query(
+        'SELECT asset_id FROM assets WHERE asset_id=?',
+        <Object?>[assetId],
+      );
       if (existingAsset.isEmpty) _insertAssetFromJson(tx, assetJson);
       for (final link in linkRows.cast<Map<String, Object?>>()) {
         _insertLinkFromJson(tx, assetId, link, now);
@@ -1959,7 +2282,10 @@ final class AssetGateway {
         },
         shaRefs: <String>[sha],
       );
-      tx.execute('DELETE FROM pending_asset_imports WHERE import_id=?', <Object?>[importId]);
+      tx.execute(
+        'DELETE FROM pending_asset_imports WHERE import_id=?',
+        <Object?>[importId],
+      );
     });
   }
 
@@ -2040,7 +2366,10 @@ final class AssetGateway {
         },
         shaRefs: <String>[blobSha256],
       );
-      tx.execute('DELETE FROM pending_asset_imports WHERE import_id=?', <Object?>[importId]);
+      tx.execute(
+        'DELETE FROM pending_asset_imports WHERE import_id=?',
+        <Object?>[importId],
+      );
     });
     final row = _assetRow(assetId);
     if (row == null) throw StateError('Asset commit did not produce a row.');
@@ -2063,7 +2392,10 @@ final class AssetGateway {
     required bool reusedBlob,
   }) async {
     _vault.database.transaction((tx) {
-      final state = tx.query('SELECT state FROM blob_objects WHERE sha256=?', <Object?>[blobSha256]);
+      final state = tx.query(
+        'SELECT state FROM blob_objects WHERE sha256=?',
+        <Object?>[blobSha256],
+      );
       if (state.isEmpty || _string(state.first['state']) != 'committed') {
         throw StateError('Blob was not committed while importing an Asset.');
       }
@@ -2133,7 +2465,10 @@ final class AssetGateway {
     int threshold,
     DateTime verifiedAt,
   ) {
-    final existing = tx.query('SELECT state,byte_size FROM blob_objects WHERE sha256=?', <Object?>[sha]);
+    final existing = tx.query(
+      'SELECT state,byte_size FROM blob_objects WHERE sha256=?',
+      <Object?>[sha],
+    );
     if (existing.isEmpty) {
       tx.execute(
         '''INSERT INTO blob_objects
@@ -2171,7 +2506,10 @@ final class AssetGateway {
     );
   }
 
-  void _insertAssetFromJson(WorkspaceTransaction tx, Map<String, Object?> json) {
+  void _insertAssetFromJson(
+    WorkspaceTransaction tx,
+    Map<String, Object?> json,
+  ) {
     tx.execute(
       '''INSERT INTO assets
          (asset_id,blob_sha256,display_name,media_type,kind,parent_asset_id,created_at_utc,deleted_at_utc,metadata_json)
@@ -2184,12 +2522,19 @@ final class AssetGateway {
         json['kind'],
         json['parent_asset_id'],
         json['created_at_utc'],
-        jsonEncode(_decodeMap(jsonEncode(json['metadata'] ?? const <String, Object?>{}))),
+        jsonEncode(
+          _decodeMap(jsonEncode(json['metadata'] ?? const <String, Object?>{})),
+        ),
       ],
     );
   }
 
-  void _insertLinkFromJson(WorkspaceTransaction tx, String assetId, Map<String, Object?> json, DateTime now) {
+  void _insertLinkFromJson(
+    WorkspaceTransaction tx,
+    String assetId,
+    Map<String, Object?> json,
+    DateTime now,
+  ) {
     tx.execute(
       '''INSERT OR IGNORE INTO asset_links
          (link_id,asset_id,entity_type,entity_id,relation,removed_at_utc,created_at_utc,metadata_json)
@@ -2207,7 +2552,10 @@ final class AssetGateway {
   }
 
   Future<void> _recordOpenedAt(AssetId assetId, DateTime at) async {
-    final row = _vault.database.query('SELECT metadata_json FROM assets WHERE asset_id=?', <Object?>[assetId]);
+    final row = _vault.database.query(
+      'SELECT metadata_json FROM assets WHERE asset_id=?',
+      <Object?>[assetId],
+    );
     if (row.isEmpty) return;
     final metadata = _decodeMap(_string(row.first['metadata_json']));
     metadata['last_opened_at_utc'] = at.toIso8601String();
@@ -2235,7 +2583,10 @@ final class AssetGateway {
         AssetIntegrityStatus.missing => 'missing',
         _ => 'mismatch',
       };
-      tx.execute('UPDATE blob_objects SET state=? WHERE sha256=?', <Object?>[blobState, blobSha256]);
+      tx.execute('UPDATE blob_objects SET state=? WHERE sha256=?', <Object?>[
+        blobState,
+        blobSha256,
+      ]);
       if (status == AssetIntegrityStatus.verified) {
         tx.execute(
           '''UPDATE blob_objects SET last_full_verified_at=?,
@@ -2257,7 +2608,8 @@ final class AssetGateway {
           newUuidV7(),
           blobSha256,
           _integrityModeWire(mode),
-          status == AssetIntegrityStatus.mismatch || status == AssetIntegrityStatus.missing
+          status == AssetIntegrityStatus.mismatch ||
+                  status == AssetIntegrityStatus.missing
               ? 'failed'
               : 'passed',
           now.toIso8601String(),
@@ -2273,7 +2625,8 @@ final class AssetGateway {
           _verificationLevel(mode, status),
         ],
       );
-      if (status == AssetIntegrityStatus.mismatch || status == AssetIntegrityStatus.missing) {
+      if (status == AssetIntegrityStatus.mismatch ||
+          status == AssetIntegrityStatus.missing) {
         _appendMutation(
           tx,
           commandId: newUuidV7(),
@@ -2312,10 +2665,16 @@ final class AssetGateway {
         newUuidV7(),
         blobSha256,
         _integrityModeWire(mode),
-        status == AssetIntegrityStatus.mismatch || status == AssetIntegrityStatus.missing ? 'failed' : 'passed',
+        status == AssetIntegrityStatus.mismatch ||
+                status == AssetIntegrityStatus.missing
+            ? 'failed'
+            : 'passed',
         now.toIso8601String(),
         now.toIso8601String(),
-        jsonEncode(<String, Object?>{...details, 'bytes_checked': bytesChecked}),
+        jsonEncode(<String, Object?>{
+          ...details,
+          'bytes_checked': bytesChecked,
+        }),
         _verificationLevel(mode, status),
       ],
     );
@@ -2336,7 +2695,10 @@ final class AssetGateway {
 
   void _markBlobMissing(String sha, String message) {
     _vault.database.transaction((tx) {
-      tx.execute("UPDATE blob_objects SET state='missing' WHERE sha256=?", <Object?>[sha]);
+      tx.execute(
+        "UPDATE blob_objects SET state='missing' WHERE sha256=?",
+        <Object?>[sha],
+      );
       _appendMutation(
         tx,
         commandId: newUuidV7(),
@@ -2344,7 +2706,11 @@ final class AssetGateway {
         entityType: 'blob',
         eventType: 'AssetIntegrityFailed',
         action: MutationAction.append,
-        payload: <String, Object?>{'blob_sha256': sha, 'status': 'missing', 'message': message},
+        payload: <String, Object?>{
+          'blob_sha256': sha,
+          'status': 'missing',
+          'message': message,
+        },
         shaRefs: <String>[sha],
       );
     });
@@ -2353,13 +2719,19 @@ final class AssetGateway {
   Future<void> _quarantineMismatch(String sha, String reason) async {
     final file = _store.blobFile(sha);
     if (await file.exists()) {
-      final quarantineName = '$sha-${DateTime.now().toUtc().microsecondsSinceEpoch}.mismatch';
-      final quarantinePath = File(p.join(_store.quarantineDirectory.path, quarantineName));
+      final quarantineName =
+          '$sha-${DateTime.now().toUtc().microsecondsSinceEpoch}.mismatch';
+      final quarantinePath = File(
+        p.join(_store.quarantineDirectory.path, quarantineName),
+      );
       await quarantinePath.parent.create(recursive: true);
       await file.rename(quarantinePath.path);
     }
     _vault.database.transaction((tx) {
-      tx.execute("UPDATE blob_objects SET state='mismatch' WHERE sha256=?", <Object?>[sha]);
+      tx.execute(
+        "UPDATE blob_objects SET state='mismatch' WHERE sha256=?",
+        <Object?>[sha],
+      );
       _appendMutation(
         tx,
         commandId: newUuidV7(),
@@ -2367,14 +2739,21 @@ final class AssetGateway {
         entityType: 'blob',
         eventType: 'AssetIntegrityFailed',
         action: MutationAction.append,
-        payload: <String, Object?>{'blob_sha256': sha, 'status': 'mismatch', 'message': reason},
+        payload: <String, Object?>{
+          'blob_sha256': sha,
+          'status': 'mismatch',
+          'message': reason,
+        },
         shaRefs: <String>[sha],
       );
     });
   }
 
   Future<void> _setBlobState(String sha, String state) async {
-    _vault.database.execute('UPDATE blob_objects SET state=? WHERE sha256=?', <Object?>[state, sha]);
+    _vault.database.execute(
+      'UPDATE blob_objects SET state=? WHERE sha256=?',
+      <Object?>[state, sha],
+    );
   }
 
   void _acquireLease(String leaseId, String blobSha, String owner) {
@@ -2385,7 +2764,9 @@ final class AssetGateway {
         <Object?>[blobSha],
       );
       if (claims.isNotEmpty) {
-        throw StateError('CAS Blob is being permanently released; opening is blocked.');
+        throw StateError(
+          'CAS Blob is being permanently released; opening is blocked.',
+        );
       }
       tx.execute(
         '''INSERT INTO asset_blob_leases(lease_id,blob_sha256,owner,created_at_utc,expires_at_utc)
@@ -2402,7 +2783,10 @@ final class AssetGateway {
   }
 
   void _releaseLease(String leaseId) {
-    _vault.database.execute('DELETE FROM asset_blob_leases WHERE lease_id=?', <Object?>[leaseId]);
+    _vault.database.execute(
+      'DELETE FROM asset_blob_leases WHERE lease_id=?',
+      <Object?>[leaseId],
+    );
   }
 
   Future<void> _rejectIfGcClaimed(String blobSha) async {
@@ -2410,7 +2794,10 @@ final class AssetGateway {
       'SELECT claim_id FROM asset_blob_gc_claims WHERE blob_sha256=?',
       <Object?>[blobSha],
     );
-    if (claims.isNotEmpty) throw StateError('CAS Blob is being permanently released; retry import later.');
+    if (claims.isNotEmpty)
+      throw StateError(
+        'CAS Blob is being permanently released; retry import later.',
+      );
   }
 
   bool _hasUnexpiredOtherTrash(String sha, String excludingAssetId) {
@@ -2431,7 +2818,8 @@ final class AssetGateway {
       '''SELECT 1 FROM assets WHERE blob_sha256=? AND deleted_at_utc IS NULL LIMIT 1''',
       <Object?>[sha],
     );
-    if (active.isNotEmpty || _hasUnexpiredOtherTrash(sha, excludingAssetId)) return false;
+    if (active.isNotEmpty || _hasUnexpiredOtherTrash(sha, excludingAssetId))
+      return false;
     final leases = _vault.database.query(
       'SELECT 1 FROM asset_blob_leases WHERE blob_sha256=? AND expires_at_utc>? LIMIT 1',
       <Object?>[sha, now.toIso8601String()],
@@ -2462,15 +2850,23 @@ final class AssetGateway {
   }
 
   Future<void> _removeUntrackedStagingFiles() async {
-    final pendingPaths = _vault.database.query('SELECT staging_relative_path FROM pending_asset_imports')
+    final pendingPaths = _vault.database
+        .query('SELECT staging_relative_path FROM pending_asset_imports')
         .map((row) => p.normalize(_string(row['staging_relative_path'])))
         .toSet();
-    pendingPaths.addAll(_vault.database.query('SELECT staging_relative_path FROM pending_sync_blobs')
-        .map((row) => p.normalize(_string(row['staging_relative_path']))));
+    pendingPaths.addAll(
+      _vault.database
+          .query('SELECT staging_relative_path FROM pending_sync_blobs')
+          .map((row) => p.normalize(_string(row['staging_relative_path']))),
+    );
     final cutoff = DateTime.now().toUtc().subtract(const Duration(days: 1));
     for (final file in await _store.listStagingFiles()) {
-      final relative = p.normalize(p.relative(file.path, from: _store.rootDirectory.path));
-      if (relative.startsWith('read-') || relative.contains('${p.separator}read-')) continue;
+      final relative = p.normalize(
+        p.relative(file.path, from: _store.rootDirectory.path),
+      );
+      if (relative.startsWith('read-') ||
+          relative.contains('${p.separator}read-'))
+        continue;
       if (pendingPaths.contains(relative)) continue;
       final stat = await file.stat();
       if (stat.modified.toUtc().isBefore(cutoff)) await file.delete();
@@ -2478,13 +2874,16 @@ final class AssetGateway {
   }
 
   Map<String, Object?>? _assetRow(String assetId) {
-    final rows = _vault.database.query('''
+    final rows = _vault.database.query(
+      '''
       SELECT a.asset_id,a.blob_sha256,a.display_name,a.media_type,a.kind,a.parent_asset_id,
              a.created_at_utc,a.deleted_at_utc,a.metadata_json,b.byte_size,b.state AS blob_state,
              b.last_full_verified_at,b.last_fast_checked_at,b.last_known_size,
              b.last_known_mtime_ns,b.last_file_id,b.threshold_at_import
       FROM assets a JOIN blob_objects b ON b.sha256=a.blob_sha256 WHERE a.asset_id=?
-    ''', <Object?>[assetId]);
+    ''',
+      <Object?>[assetId],
+    );
     return rows.firstOrNull;
   }
 
@@ -2498,7 +2897,10 @@ final class AssetGateway {
     return rows.firstOrNull;
   }
 
-  AssetRecord _assetFromRow(Map<String, Object?> row, {required int thresholdBytes}) {
+  AssetRecord _assetFromRow(
+    Map<String, Object?> row, {
+    required int thresholdBytes,
+  }) {
     final blobState = _string(row['blob_state']);
     final lastFull = _dateTime(row['last_full_verified_at']);
     final integrityStatus = switch (blobState) {
@@ -2507,7 +2909,8 @@ final class AssetGateway {
       'staged' => AssetIntegrityStatus.pending,
       'purged' => AssetIntegrityStatus.missing,
       _ when lastFull != null => AssetIntegrityStatus.verified,
-      _ when row['last_fast_checked_at'] != null => AssetIntegrityStatus.quickChecked,
+      _ when row['last_fast_checked_at'] != null =>
+        AssetIntegrityStatus.quickChecked,
       _ => AssetIntegrityStatus.overdue,
     };
     return AssetRecord(
@@ -2518,7 +2921,9 @@ final class AssetGateway {
       mediaType: _nullableString(row['media_type']),
       kind: AssetKind.parse(_string(row['kind'])),
       parentAssetId: _nullableString(row['parent_asset_id']),
-      createdAtUtc: _dateTime(row['created_at_utc']) ?? DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+      createdAtUtc:
+          _dateTime(row['created_at_utc']) ??
+          DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
       deletedAtUtc: _dateTime(row['deleted_at_utc']),
       integrityStatus: integrityStatus,
       integrityThresholdBytes: thresholdBytes,
@@ -2537,7 +2942,9 @@ final class AssetGateway {
     );
     final value = rows.firstOrNull?['integrity_threshold_bytes'];
     final threshold = _int(value);
-    return threshold != null && threshold >= 0 ? threshold : defaultIntegrityThresholdBytes;
+    return threshold != null && threshold >= 0
+        ? threshold
+        : defaultIntegrityThresholdBytes;
   }
 
   void _appendMutation(
@@ -2552,24 +2959,29 @@ final class AssetGateway {
     String? approvalRef,
   }) {
     final now = DateTime.now().toUtc();
-    tx.appendMutation(MutationEventDraft(
-      command: CommandMetadata(
-        commandId: commandId,
-        utcTime: now,
-        actor: 'local_user',
-        approvalRef: approvalRef == null ? null : ApprovalRef(approvalRef),
+    tx.appendMutation(
+      MutationEventDraft(
+        command: CommandMetadata(
+          commandId: commandId,
+          utcTime: now,
+          actor: 'local_user',
+          approvalRef: approvalRef == null ? null : ApprovalRef(approvalRef),
+        ),
+        deviceId: _vault.deviceId,
+        entityType: entityType,
+        entityId: entityId,
+        eventType: eventType,
+        action: action,
+        payloadJson: jsonEncode(payload),
+        assetShaRefs: shaRefs,
       ),
-      deviceId: _vault.deviceId,
-      entityType: entityType,
-      entityId: entityId,
-      eventType: eventType,
-      action: action,
-      payloadJson: jsonEncode(payload),
-      assetShaRefs: shaRefs,
-    ));
+    );
   }
 
-  Future<T> _withBlobLock<T>(String blobSha, Future<T> Function() action) async {
+  Future<T> _withBlobLock<T>(
+    String blobSha,
+    Future<T> Function() action,
+  ) async {
     while (_blobLocks.containsKey(blobSha)) {
       await _blobLocks[blobSha]!.future;
     }
@@ -2585,44 +2997,61 @@ final class AssetGateway {
 
   static void _requireApproval(String approvalRef) {
     if (approvalRef.trim().isEmpty) {
-      throw ArgumentError.value(approvalRef, 'approvalRef', 'A user approval reference is required.');
+      throw ArgumentError.value(
+        approvalRef,
+        'approvalRef',
+        'A user approval reference is required.',
+      );
     }
   }
 
   static String _normalizeDisplayName(String value) {
     final normalized = value.replaceAll(RegExp(r'[\x00-\x1f]'), '').trim();
     if (normalized.isEmpty || normalized == '.' || normalized == '..') {
-      throw ArgumentError.value(value, 'displayName', 'Must be a visible file name.');
+      throw ArgumentError.value(
+        value,
+        'displayName',
+        'Must be a visible file name.',
+      );
     }
     return normalized;
   }
 
-  static Map<String, Object?> _linkToJson(AssetLinkRef link) => <String, Object?>{
+  static Map<String, Object?> _linkToJson(AssetLinkRef link) =>
+      <String, Object?>{
         'target_type': link.targetType,
         'target_id': link.targetId,
         'role': link.role,
         'metadata': link.metadata,
       };
 
-  static List<Map<String, Object?>> _wireLinks(List<Map<String, Object?>> values) =>
-      values.map((link) => <String, Object?>{
-            'entity_type': link['target_type'] ?? link['entity_type'],
-            'entity_id': link['target_id'] ?? link['entity_id'],
-            'relation': link['role'] ?? link['relation'],
-            'metadata': link['metadata'] ?? const <String, Object?>{},
-          }).toList(growable: false);
+  static List<Map<String, Object?>> _wireLinks(
+    List<Map<String, Object?>> values,
+  ) => values
+      .map(
+        (link) => <String, Object?>{
+          'entity_type': link['target_type'] ?? link['entity_type'],
+          'entity_id': link['target_id'] ?? link['entity_id'],
+          'relation': link['role'] ?? link['relation'],
+          'metadata': link['metadata'] ?? const <String, Object?>{},
+        },
+      )
+      .toList(growable: false);
 
-  static String _impactJson(DeletionImpact impact) => jsonEncode(<String, Object?>{
+  static String _impactJson(DeletionImpact impact) =>
+      jsonEncode(<String, Object?>{
         'asset_id': impact.assetId,
         'blob_sha256': impact.blobSha256,
         'logical_bytes': impact.logicalBytes,
         'reclaimable_physical_bytes': impact.reclaimablePhysicalBytes,
         'active_links': impact.activeLinks
-            .map((link) => <String, Object?>{
-                  'target_type': link.targetType,
-                  'target_id': link.targetId,
-                  'role': link.role,
-                })
+            .map(
+              (link) => <String, Object?>{
+                'target_type': link.targetType,
+                'target_id': link.targetId,
+                'role': link.role,
+              },
+            )
             .toList(growable: false),
         'other_active_assets_sharing_blob': impact.otherActiveAssetsSharingBlob,
         'trash_assets_sharing_blob': impact.trashAssetsSharingBlob,
@@ -2634,21 +3063,28 @@ final class AssetGateway {
       });
 
   static String _integrityModeWire(IntegrityCheckMode mode) => switch (mode) {
-        IntegrityCheckMode.fullSha256 => 'full_sha256',
-        IntegrityCheckMode.metadataQuick => 'metadata_quick',
-        IntegrityCheckMode.transferChecksum => 'transfer_checksum',
-      };
+    IntegrityCheckMode.fullSha256 => 'full_sha256',
+    IntegrityCheckMode.metadataQuick => 'metadata_quick',
+    IntegrityCheckMode.transferChecksum => 'transfer_checksum',
+  };
 
-  static RemoteAssetDeletionReview _remoteDeletionReviewFromRow(Map<String, Object?> row) {
+  static RemoteAssetDeletionReview _remoteDeletionReviewFromRow(
+    Map<String, Object?> row,
+  ) {
     final status = switch (_string(row['status'])) {
       'pending' => RemoteAssetDeletionReviewStatus.pending,
       'accepted' => RemoteAssetDeletionReviewStatus.accepted,
       'rejected' => RemoteAssetDeletionReviewStatus.rejected,
       'audit_only' => RemoteAssetDeletionReviewStatus.auditOnly,
-      final value => throw FormatException('Unsupported remote deletion review state: $value'),
+      final value => throw FormatException(
+        'Unsupported remote deletion review state: $value',
+      ),
     };
     final requestedAt = _dateTime(row['requested_at_utc']);
-    if (requestedAt == null) throw const FormatException('Remote deletion review timestamp is invalid.');
+    if (requestedAt == null)
+      throw const FormatException(
+        'Remote deletion review timestamp is invalid.',
+      );
     return RemoteAssetDeletionReview(
       sourceEventId: _string(row['source_event_id']),
       targetId: _string(row['target_id']),
@@ -2669,16 +3105,20 @@ final class AssetGateway {
     );
   }
 
-  static int? _int(Object? value) => value is int ? value : int.tryParse('$value');
+  static int? _int(Object? value) =>
+      value is int ? value : int.tryParse('$value');
   static String _string(Object? value) => value?.toString() ?? '';
-  static String? _nullableString(Object? value) => value == null ? null : value.toString();
-  static DateTime? _dateTime(Object? value) => value == null ? null : DateTime.tryParse(value.toString())?.toUtc();
+  static String? _nullableString(Object? value) =>
+      value == null ? null : value.toString();
+  static DateTime? _dateTime(Object? value) =>
+      value == null ? null : DateTime.tryParse(value.toString())?.toUtc();
   static Map<String, Object?> _decodeMap(String json) {
     if (json.isEmpty) return <String, Object?>{};
     try {
       final decoded = jsonDecode(json);
       if (decoded is Map<String, Object?>) return decoded;
-      if (decoded is Map) return decoded.map((key, value) => MapEntry(key.toString(), value));
+      if (decoded is Map)
+        return decoded.map((key, value) => MapEntry(key.toString(), value));
     } on FormatException {
       return <String, Object?>{};
     }
@@ -2697,8 +3137,14 @@ final class AssetGateway {
 
   static Future<String> sha256Digest(File file) async =>
       (await sha256.bind(file.openRead()).first).toString();
-
 }
+
+typedef PostAssetImportMaterializer =
+    Future<void> Function(
+      AssetRecord asset, {
+      required AssetId? parentAssetId,
+      required List<AssetLinkRef> links,
+    });
 
 extension _IterableFirstOrNull<E> on Iterable<E> {
   E? get firstOrNull {

@@ -4,6 +4,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:lab_core/lab_core.dart';
 
+import '../widgets/workspace_ui.dart';
+
 class CalculationPage extends StatefulWidget {
   const CalculationPage({
     required this.packs,
@@ -241,22 +243,13 @@ class _CalculationPageState extends State<CalculationPage> {
 
   @override
   Widget build(BuildContext context) => ListView(
-    padding: const EdgeInsets.all(24),
+    padding: const EdgeInsets.fromLTRB(28, 22, 28, 32),
     children: [
-      Text('声明式计算', style: Theme.of(context).textTheme.headlineMedium),
-      const SizedBox(height: 8),
-      const Text('计算仅接受已安装、已审批且哈希固定的 Pack。结果保存在本机，并必须可查看原始计算轨迹。'),
-      if (_error != null)
-        MaterialBanner(
-          content: Text('读取计算状态失败：$_error'),
-          actions: [TextButton(onPressed: _refresh, child: const Text('重试'))],
-        ),
-      const SizedBox(height: 12),
-      Wrap(
-        spacing: 12,
-        runSpacing: 8,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
+      WorkspacePageHeader(
+        title: '声明式计算',
+        subtitle: '只运行已安装、已审批且哈希固定的 Pack；每项结果都保留原始计算轨迹。',
+        icon: Icons.functions_outlined,
+        actions: [
           FilledButton.icon(
             onPressed: _busy ? null : _installBuiltIns,
             icon: const Icon(Icons.verified_outlined),
@@ -265,42 +258,61 @@ class _CalculationPageState extends State<CalculationPage> {
           OutlinedButton.icon(
             onPressed: _busy ? null : _importDraft,
             icon: const Icon(Icons.upload_file_outlined),
-            label: const Text('导入、审查并审批 Pack'),
+            label: const Text('导入并审查 Pack'),
           ),
-          OutlinedButton.icon(
+          IconButton(
             onPressed: _refresh,
+            tooltip: '刷新',
             icon: const Icon(Icons.refresh),
-            label: const Text('刷新'),
-          ),
-          FutureBuilder<CalculationCapabilities>(
-            future: _capabilities,
-            builder: (context, snapshot) {
-              final result = snapshot.data;
-              if (snapshot.hasError) return const Chip(label: Text('执行器不可用'));
-              if (result == null) return const Chip(label: Text('检查执行器…'));
-              return Chip(
-                avatar: Icon(
-                  result.available ? Icons.memory : Icons.error_outline,
-                  size: 18,
-                ),
-                label: Text(
-                  result.available
-                      ? '${result.executorId} · ${result.supportedOperations.length} 种操作'
-                      : result.unsupportedReason ?? '执行器不可用',
-                ),
-              );
-            },
           ),
         ],
+      ),
+      if (_error != null)
+        MaterialBanner(
+          content: Text('读取计算状态失败：$_error'),
+          actions: [TextButton(onPressed: _refresh, child: const Text('重试'))],
+        ),
+      FutureBuilder<CalculationCapabilities>(
+        future: _capabilities,
+        builder: (context, snapshot) {
+          final result = snapshot.data;
+          if (snapshot.hasError) {
+            return const WorkspaceStatusBadge(
+              label: '执行器不可用',
+              icon: Icons.error_outline,
+              tone: WorkspaceBadgeTone.danger,
+            );
+          }
+          if (result == null) {
+            return const WorkspaceStatusBadge(
+              label: '检查执行器…',
+              icon: Icons.memory_outlined,
+            );
+          }
+          return WorkspaceStatusBadge(
+            label: result.available
+                ? '${result.executorId} · ${result.supportedOperations.length} 种操作'
+                : result.unsupportedReason ?? '执行器不可用',
+            icon: result.available
+                ? Icons.memory_outlined
+                : Icons.error_outline,
+            tone: result.available
+                ? WorkspaceBadgeTone.success
+                : WorkspaceBadgeTone.danger,
+          );
+        },
       ),
       const SizedBox(height: 20),
       Text('已安装 Pack', style: Theme.of(context).textTheme.titleLarge),
       if (_packs.isEmpty)
-        const Card(
-          child: ListTile(
-            leading: Icon(Icons.info_outline),
-            title: Text('尚无已安装 Pack'),
-            subtitle: Text('先安装并核验随应用发布的内置 Pack。'),
+        WorkspaceEmptyState(
+          icon: Icons.inventory_2_outlined,
+          title: '尚无已安装 Pack',
+          description: '先安装并核验随应用发布的内置 Pack，再启动本机计算。',
+          action: FilledButton.icon(
+            onPressed: _busy ? null : _installBuiltIns,
+            icon: const Icon(Icons.verified_outlined),
+            label: const Text('安装内置 Pack'),
           ),
         )
       else
@@ -323,7 +335,11 @@ class _CalculationPageState extends State<CalculationPage> {
       const SizedBox(height: 20),
       Text('本机计算记录', style: Theme.of(context).textTheme.titleLarge),
       if (_runs.isEmpty)
-        const Card(child: ListTile(title: Text('暂无计算记录。')))
+        const WorkspaceEmptyState(
+          icon: Icons.receipt_long_outlined,
+          title: '暂无计算记录',
+          description: '运行已批准 Pack 后，结果和原始 CalculationTrace 会列在这里。',
+        )
       else
         for (final run in _runs) _calculationRunCard(run),
     ],
