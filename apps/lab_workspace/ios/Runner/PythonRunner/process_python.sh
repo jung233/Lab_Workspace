@@ -47,6 +47,9 @@ cp -R "${python_source}/mobile" "${app_sources}/"
 if [[ -z "${EXPANDED_CODE_SIGN_IDENTITY:-}" ]]; then
   export EXPANDED_CODE_SIGN_IDENTITY="-"
 fi
+if [[ -z "${EXPANDED_CODE_SIGN_IDENTITY_NAME:-}" ]]; then
+  export EXPANDED_CODE_SIGN_IDENTITY_NAME="Ad Hoc"
+fi
 source "${build_utils}"
 cd "${PROJECT_DIR}"
 install_python "Python.xcframework" "app"
