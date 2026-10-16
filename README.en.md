@@ -1,336 +1,376 @@
 # Lab Workspace
 
-### Connect experiment records, original data, and every calculation
+### Turn a single sentence into a reusable laboratory protocol—and connect every step, measurement, and calculation
 
-**A single-user, local-first research workspace for biomedical experiments.** Connect projects, samples, Protocols, execution, scientific calculations, original files, and optional AI assistance into a traceable record.
+**Lab Workspace is a local-first, AI-assisted laboratory workspace for biomedical research.** It brings together **AI-assisted Protocol authoring, reusable standard workflows, step-by-step experiment execution and documentation, automatic parameter handoffs, trustworthy scientific calculations, raw-file management, and traceable results** in one application.
 
-[中文](README.md) · **English**
+Instead of switching constantly between SOP documents, Excel sheets, timers, folders, and lab notebooks, you can follow one connected workflow: **describe an experiment → generate and review a Protocol → approve it as a versioned template → run it repeatedly → record data at each step → automatically feed results into downstream calculations → archive original files and the full evidence behind every result.**
 
-Windows · Android · iOS | Flutter + Dart + SQLite | V2.0 in development
+**Target platforms:** Windows · Android · iOS | Flutter + Dart + SQLite | Single-user · Local-first · Optional AI and cloud services
 
-> **Project status:** The repository contains a native client, shared core, Python bridges, data contracts, and reference examples, beyond the original specification kit. Source coverage is not functional acceptance: existing records include static analysis, while platform builds, device execution, cloud services, notifications, encrypted recovery, and cross-device behavior still need runtime verification. This README does not claim a fully accepted production release. See [implementation status](docs/implementation-status.md).
+[简体中文](./README.md) · [English](./README.en.md) · [Implementation status](./docs/implementation-status.md) · [Development documentation](./docs/00-scope-decisions.md) · [Build workflow](./.github/workflows/build-native-clients.yml)
+
+> **Development status: V2.0 is under development; no fully runtime-validated production release is available yet.** The repository contains source code for native clients, domain and calculation foundations, Protocol/Run management, AI, imaging, file management, synchronization, and backup. Static-analysis results have been recorded, but end-to-end execution on supported platforms, notifications, cloud integrations, encrypted recovery, and cross-device conflict handling still require validation. The features below describe the intended product behavior and the scope represented in the codebase—not a claim that every feature has passed validation in real research settings. Maintain independent backups of important research data. See [Implementation status](./docs/implementation-status.md).
 
 ---
 
-## Contents
+## Why Lab Workspace?
 
-- [Highlights](#highlights)
-- [Features](#features)
-- [Use cases](#use-cases)
-- [Getting started and configuration](#getting-started-and-configuration)
-- [Architecture and layout](#architecture-and-layout)
-- [Development](#development)
-- [Builds and distribution](#builds-and-distribution)
-- [Documentation](#documentation)
-- [Boundaries and FAQ](#boundaries-and-faq)
+Common problems in laboratory research include:
 
-## Highlights
+- SOPs live in Word or PDF files and must be found, copied, and manually adapted for every experiment.
+- The same experiment is repeated, but sample counts, treatment conditions, actual timing, and results are not managed consistently.
+- A concentration calculated in one step must be copied into Excel to calculate a dilution or loading volume in the next.
+- Spreadsheets retain final numbers but make it difficult to reconstruct formulas, units, original inputs, and calculation versions.
+- Microscopy images, instrument exports, and analysis files are scattered across folders, making it hard to tell which sample each file belongs to.
+- Changes to conditions, delayed steps, sample aliquoting, and experimental repeats often survive only as handwritten notes.
 
-| Highlight | Research benefit | Principle |
-| --- | --- | --- |
-| **Local first, optional cloud** | Keep data on your devices; basic records and trusted local calculations do not depend on cloud services | Per-device SQLite + AssetStore; no mandatory central backend, web frontend, or Docker |
-| **Executable SOPs** | Connect Protocol steps to samples, measurements, and timing records | Separate versioned Protocols from Runs; never overwrite approved versions |
-| **Traceable results** | Follow results back to inputs, formulas, units, operator versions, and intermediate values | CalculationTrace and mandatory “展示原始计算” (Show original calculation); no silent historical rewrites |
-| **Declarative extensions** | Combine existing operators instead of building a module for every experiment | Schema, primitive allowlist, golden cases, and approval; new primitives still need trusted development |
-| **Reviewable AI assistance** | Receive workflow/ROI suggestions while controlling scientific choices and data transfer | Separate drafts, upload consent, tool approval, and execution; never automatically run model-generated Python |
-| **Verifiable originals** | Reference one file across experiments and retain derived-output relationships | SHA-256 on ingest, immutable content-addressed storage, deletion impact analysis, reference-aware GC |
-| **Separate sync and backup** | Exchange records across devices and retain independently restorable snapshots | Immutable event/blob sync, SQLite Online Backup, optional remote encryption |
+**Lab Workspace is not simply a digital replacement for paper laboratory records. Its goal is to turn experimental methods into reusable, data-connected workflows.**
 
-## Features
-
-These are modules present in source. Delivery readiness depends on [outstanding acceptance](docs/implementation-status.md#implementation-limits-and-acceptance-still-outstanding), especially for platforms and external services.
-
-### Experiments, Protocols, and scheduling
-
-- **Projects and experiments:** Manage groups, samples, and treatments; associate measurements, files, and calculations with experimental context.
-- **Protocols and Runs:** Store structured workflows, versions, and approval state; execute independent Runs, record step states, and retain revisions.
-- **Tasks and reminders:** Manage local tasks, timing records, and notifications. Permissions, background behavior, and devices require platform verification.
-- **Overview:** Access experiments, files, calculations, AI, reminders, and integrations.
-
-### Scientific calculations and Packs
-
-The repository includes **BCA standard curve, WB loading volume, and WB normalization** Pack sources with synthetic inputs and expected outputs demonstrating the generic engine.
-
-```text
-Inputs and units → Approved Calculation Pack → Versioned allowlisted primitives
-                → Results + CalculationTrace → Show original calculation
-```
-
-The engine supports decimal arithmetic, units, and versioned primitives, with a Dart executor and trusted Python bridges. Installation requires structural, supported-operation, golden-case, and approval checks. Community catalogs support pinned Ed25519 publisher keys, content hashes, and provenance for declarative Packs. A public marketplace and arbitrary executable plugin installation are not provided.
-
-### File Explorer and integrity
-
-- Hash originals with SHA-256 on ingest and retain immutable content-addressed objects; the database manages virtual folders and display names.
-- Browse, system-open, inspect references, soft-delete, preview permanent deletion impact, analyze storage, and collect garbage.
-- Multiple Assets may share an object; collection accounts for shared references, retained backups, remote tombstones, and active jobs.
-- The **default strict-access threshold is configurable at 2 GiB**: smaller assets receive full SHA checks on logical reads; larger assets normally receive metadata quick checks, with full verification on request.
-
-> **A quick check is not SHA verification.** Large assets are hashed on ingest, but subsequent metadata checks cannot prove every byte is unchanged.
-
-### AI and images
-
-Modules include separate Responses / Chat Completions adapters, an official OpenAI Python SDK bridge, provider capability probing, a bounded tool loop, versioned Skills, and Pack draft review.
-
-Image workflows retain explicit review points:
-
-1. Import and verify an immutable original; prepare a controlled preview.
-2. Approve the provider, purpose, data scope, and upload contents before sending applicable data.
-3. Review model-suggested pages, channels, ROIs, background regions, and methods.
-4. Compute deterministically on approved original pixels; retain source hashes, integer sample hashes, intermediate values, and versioned traces.
-5. Store crops, overlays, and exports as separate derived Assets linked to originals and reports.
-
-Quantification accepts supported **unsigned 8/16-bit grayscale or RGB PNG/TIFF layouts**. Unsupported TIFF layouts, unsupported alpha-bearing data, and JPEG are rejected before upload; see [implementation status](docs/implementation-status.md) for details. There is no bundled local CV detector/segmenter. Generated or edited pixels cannot serve as quantitative scientific evidence.
-
-### Sync, backup, and integrations
-
-| Module | Source capabilities | Configuration and acceptance boundaries |
-| --- | --- | --- |
-| OneDrive / S3 | Immutable event/blob sync, selective transfer; S3 SigV4 and multipart upload | Configure destinations, credentials, and permissions; live provider/conflict acceptance remains pending |
-| Independent backup | SQLite Online Backup snapshots, object archives, restore into a new directory | Sync success does not establish recovery; never sync a live SQLite file |
-| Optional remote encryption | Plaintext/encrypted backups by destination and class; chunked AES-GCM | Independent plaintext recovery; encrypted recovery depends on keys and needs recovery/security acceptance |
-| Microsoft To Do | OAuth, list discovery, confirmed push; default-off import, delta cursors, conflict review | Register a public client; live account verification remains pending |
-| Local secret storage | Opaque SecretRef in SQLite, credentials in platform secure storage | No API keys in Packs, sync events, or backups |
-
-Restore rotates local installation identity and authorization generation, preventing historical AI, ROI, or integration approvals from becoming authorization on a restored installation automatically.
-
-## Use cases
-
-### BCA → WB: concentration, loading, and images
-
-Create an experiment and samples → select/review a Protocol → enter confirmed BCA data → run the standard curve Pack → inspect calculations → use confirmed results for WB loading volumes → import the WB original → review ROIs and quantify → link files, calculations, and reports → back up.
-
-**Value:** Keep concentration, dilution, loading volume, and image results connected. Researchers must review fitting choices, background subtraction, and units. Repository examples are synthetic.
-
-### Repeated experiments and SOP revisions
-
-Approve a reusable workflow and create a separate Run for each experiment. New methods receive new versions while historical execution and calculation evidence remain intact. AI can help prepare Protocol or Calculation Pack drafts for review before use.
-
-### Original data archives across devices
-
-Import instrument files and images, inspect experiment references and storage in Explorer, optionally exchange events/objects through OneDrive/S3, and create separate recovery snapshots. Review deletion impact before removing assets referenced by other experiments.
-
-### AI-assisted image review
-
-Approve preview upload for supported original PNG/TIFF files, receive suggestions, confirm ROIs/channels, and run original-pixel statistics with retained traces. This supports reviewable workflows, not automatic scientific interpretation or arbitrary microscopy analysis.
-
-## Getting started and configuration
-
-The current entry point is **source development and verification**. A workflow definition does not establish that successful downloadable artifacts exist.
-
-1. Prepare the toolchain below and start the client.
-2. Startup creates a local Vault under the operating system application data directory, separating SQLite and managed objects.
-3. Organize records in Experiments/Protocols and import originals through Files.
-4. Review inputs, units, and approval in Calculations and Packs; inspect “展示原始计算” afterward.
-5. For AI, configure the provider and runtime in provider settings and AI/image screens, then approve applicable transfers.
-6. Configure cloud and To Do only when needed; validate sync, backup, and restore with nonsensitive fixtures before production use.
-
-<details>
-<summary><strong>Optional capability configuration</strong></summary>
-
-| Capability | Requirements |
-| --- | --- |
-| Windows Python | Trusted Python/Conda/venv and project runner; SDK bridge additionally requires the official SDK. Never feed arbitrary AI code to the runner |
-| Android / iOS Python | Packaged trusted runtime/native bridges; no promise of arbitrary native package installation at runtime |
-| AI | Endpoint, model, API mode, securely stored credentials; provider capabilities are probed, and network probes may incur charges and require approval |
-| OneDrive | Independent Files.ReadWrite OAuth configuration; do not assume To Do authorization applies |
-| S3 | Compatible endpoint, bucket, secure credential reference |
-| Microsoft To Do | Registered public client, tenant/client ID, delegated permissions, target list; confirm sync preview |
-| Encrypted backups | Retain recovery keys and rehearse restore in a separate directory |
-
-</details>
-
-## Architecture and layout
+## The 30-second overview: From Protocol to research result
 
 ```mermaid
-flowchart TB
-    UI[Windows / Android / iOS · Flutter] --> CORE[Dart application services and domain core]
-    CORE --> DB[(Device-local SQLite)]
-    CORE --> ASSET[AssetStore / Explorer / integrity]
-    ASSET --> CAS[(Immutable SHA-256 objects)]
-    CORE --> CALC[Approved Packs / primitives / CalculationTrace]
-    CALC --> EXEC[Dart executor / trusted Python bridges]
-    CORE --> REVIEW[AI drafts / upload and tool approval]
-    REVIEW -.explicit consent.-> AI[Optional AI provider]
-    CORE --> SYNC[Event and blob sync / snapshot backup]
-    SYNC -.optional.-> CLOUD[OneDrive / S3]
-    CORE -.optional.-> TODO[Microsoft To Do]
+flowchart TD
+    A[Natural language / SOP file / Existing template] --> B[AI prepares a structured Protocol draft]
+    B --> C{Researcher reviews and approves}
+    C -->|Changes needed| B
+    C -->|Approved| D[Freeze a standard Protocol version]
+    D --> E[Create a new experimental Run]
+    E --> F[Perform steps, track time, enter parameters and measurements]
+    F --> G[Bind approved outputs to downstream steps]
+    G --> H[Invoke a trusted Calculation Pack]
+    H --> I[Produce results and CalculationTrace]
+    I --> J[Continue workflow / Link original files and images]
+    J --> K[Archive experiment, manage files, optionally back up]
+    D --> L[Reuse the same template for another experiment]
+    L --> E
 ```
 
-**Current implementation:** Flutter native UI, shared pure-Dart core, versioned SQLite migrations, managed CAS, platform secret storage, and Python JSON-RPC/native bridges. Shared code is consolidated in `packages/lab_core/` and persistence directly uses `sqlite3`. Split packages and Drift in early designs are not the current implemented layout.
+Four concepts explain how the system works:
+
+| Concept | In plain language | What it does |
+| --- | --- | --- |
+| **Protocol** | A standard experimental workflow template | Defines steps, required parameters, timers, measurement fields, calculation tools, and dependencies. Approved versions are fixed. |
+| **Run (experiment execution)** | One actual instance of an experiment | One Protocol can create any number of Runs. Each Run independently records samples, actual conditions, timestamps, results, and revisions. |
+| **Calculation Pack** | A reusable scientific calculation tool | Packages methods such as BCA fitting, dilution calculations, and Western Blot loading into validated, versioned calculation workflows. |
+| **Skill** | Instructions that guide AI authoring and review | Helps draft Protocols, Calculation Packs, or image-operation plans. It does not bypass validation or automatically grant access to local resources. |
+
+## A complete example: BCA protein assay → Western Blot
+
+Suppose you need to extract protein from mouse tissue across several experimental groups, quantify it with a BCA assay, and perform a Western Blot (WB).
+
+### 1. Create a Protocol in natural language
+
+Simply describe what you want:
+
+> Create a standard workflow covering BCA protein quantification through Western Blot. There are three experimental groups, with six samples per group. Every step should record its actual execution time and required parameters. The BCA step must retain standards, sample absorbance measurements, dilution factors, and QC results. Calculated protein concentrations should automatically feed into the subsequent WB loading-volume calculation. Require human confirmation at critical points and link the original WB images and analysis results when finished.
+
+Within the capabilities already supported by the system, AI transforms this into an **editable, structurally validated, reviewable Protocol draft**, not merely an SOP essay. The draft may define:
+
+- Samples, experimental groups, variables, and treatment conditions.
+- Action, wait, measurement, calculation, image, and human-review steps.
+- Required fields, data types, units, and valid ranges for each step.
+- Dependencies between steps and explicit bindings from earlier outputs to later inputs.
+- Optional timers, advance reminders, conditional branches, and repeated operations.
+- Calculation Packs to invoke, together with pinned versions.
+- SOP provenance, missing information, and issues requiring review.
+
+**Important: AI-generated Protocols are drafts until approved.** Unknown reagent concentrations, temperatures, incubation times, and scientific procedures are not treated as established facts. A researcher must review the details before a draft becomes an approved template.
+
+### 2. Review once, reuse many times
+
+Save the reviewed workflow as `BCA → WB Protocol v1.0`. Future experiments no longer require rebuilding the procedure or calculation spreadsheets.
+
+- Monday's experiment: create `Run #001` from v1.0.
+- Wednesday's repeat: create `Run #002` from the same v1.0.
+- Change the method later: create and review `v1.1` without overwriting completed Runs.
+
+**A Protocol describes how an experiment should be performed; a Run records what actually happened.** Historical Runs retain their original Protocol version and parameter snapshot.
+
+### 3. Follow the steps and record data as you work
+
+Each step can have a purpose-built form generated from its Protocol definition, rather than a single free-text box.
+
+| Step | Data recorded during this Run | Output / downstream use |
+| --- | --- | --- |
+| Sample preparation | Sample ID, group, source, treatment conditions | Associates the sample with later measurements, files, and calculations |
+| BCA measurement | Standard concentrations, well positions, absorbance, sample dilution factors | Inputs to a standard-curve Calculation Pack |
+| BCA calculation | Fitting method, QC approval | Protein concentration for each sample |
+| WB loading preparation | Target protein mass, approved concentration | Automatically calculates sample volume and related preparation parameters |
+| WB procedure | Actual start/end times, reagents, conditions, deviations | Preserves a complete execution record |
+| Imaging and analysis | Original images, approved lanes/ROIs, background regions | Saves the analysis report and links it to the correct samples |
+
+Steps may follow explicit dependencies or support parallel waits, decisions, bounded repetitions, and human review. An expired timer or delivered reminder does **not** automatically mark a physical experiment step as completed.
+
+### 4. Automatically pass results from one step to the next
+
+Suppose a sample has an approved BCA protein concentration of **2 µg/µL** and the WB target is **20 µg of protein per well**:
 
 ```text
-LabWorkspace/
-├── README.md / README.en.md          # Chinese / English landing pages
-├── AGENTS.md                        # AI Coding Agent constraints
-├── Lab_Workspace_V2.0_Complete_Development_Document.md
-├── apps/lab_workspace/              # Native Flutter client
-│   ├── lib/screens/                 # Experiments, files, calculations, settings
-│   ├── lib/src/ai_image/            # AI, images, Pack review
-│   ├── lib/integrations/            # Microsoft OAuth / To Do UI
-│   ├── lib/platform/                # Secrets, files, notifications, calculations
-│   ├── windows/                    # Windows runner
-│   ├── android/                    # Native project and Python bridge
-│   ├── ios/                        # Native project and Python bridge
-│   └── pubspec.yaml / pubspec.lock  # Dependencies and pinned resolution
-├── packages/lab_core/lib/src/       # Shared Dart core
-│   ├── domain/                     # Entities, events, IDs, security, invariants
-│   ├── application/                # Experiment, Protocol, Run, sample, task services
-│   ├── persistence/                # SQLite and migrations
-│   ├── assets/                     # CAS, references, integrity, deletion
-│   ├── calculation/                # Engine, primitives, units, traces
-│   ├── packs/                      # Validation, registry, built-in catalog
-│   ├── ai/                         # Adapters, Skills, drafts, review
-│   ├── image/                      # Tools, ROIs, quantification traces
-│   ├── sync/                       # Events, objects, cloud connectors
-│   ├── backup/                     # Snapshots, encryption, recovery
-│   └── integrations/               # Microsoft To Do services
-├── python/                         # Trusted RPC, primitives, AI SDK bridge
-├── built_in_packs/                 # BCA, WB loading volume, WB normalization
-├── contracts/                      # Versioned JSON Schemas
-├── db/                             # Reference SQLite DDL / extensions
-├── examples/                       # Protocol, Pack, storage, image examples
-├── skills/                         # Three independent author/orchestration Skills
-├── tests/                          # Python reference contracts and fixtures
-├── tooling/                        # Schema, manifest, static checks
-│   └── release/                    # Native builds and iOS Python preparation
-├── docs/                           # Specifications, status, catalog protocol
-└── .github/workflows/              # Native client build definitions
+Approved BCA result: Sample A protein concentration = 2 µg/µL
+           ↓ Automatically bound to the WB loading step
+Target protein mass = 20 µg
+Stock sample volume = 20 µg ÷ 2 µg/µL = 10 µL
+           ↓
+Store the result, formula, units, input provenance, tool version,
+and intermediate values
 ```
 
-**Repository and Vault differ:** Source lives in the repository; user data lives in the platform application-support Vault, logically containing databases, immutable objects, staging/caches, Packs, jobs, and backups. See [architecture](docs/01-architecture-and-directory.md) for the design; platform code determines actual paths. Do not sync a running Vault as an ordinary cloud-drive folder.
+These are illustrative numbers, **not** a recommendation for any particular experimental setup. Real experiments must account for the relevant SOP, buffer composition, final volume, sample quality, and assay QC.
 
-## Development
+If an absorbance value was entered incorrectly, the system should preserve the original record and the reason for correction, produce a **new calculation version**, and flag affected downstream results for re-review—rather than silently rewriting a completed experiment.
 
-### Requirements
+### 5. Open any calculated result to inspect the evidence
 
-| Tool | Repository baseline |
+A core requirement of Lab Workspace is **“Show raw calculation.”**
+
+For every computed scientific value, you should be able to inspect the original inputs, associated samples, formulas, units, calculation nodes, full intermediate results, rounding rules, Pack/operator versions, quality checks, and underlying files—not just the final number.
+
+**An AI explanation is not evidence that a calculation actually ran.** Values extracted or suggested by AI remain unverified suggestions until explicitly reviewed; they do not automatically become validated measurements.
+
+### 6. Archive original images, analysis, and the experiment together
+
+Import the original WB image as an immutable source asset. For image analysis, AI may propose regions of interest (ROIs), lanes, and background regions. A researcher reviews these selections before trusted tools perform deterministic measurements on the **unaltered original pixels**. Cropped or annotated images and analysis reports are saved as derived assets, never as replacements for the source image.
+
+Ultimately, one Run can link its SOP version, samples and groups, step-by-step records, raw measurements, calculation traces, original images, derived results, and backup state.
+
+---
+
+## Core features
+
+### ① Create Protocols with natural language—and approve them as standard workflows
+
+Protocol creation is not limited to manual entry. The design supports five approaches:
+
+1. **Describe an experiment in natural language:** Tell AI the experimental goal, samples, required measurements, and calculation dependencies.
+2. **Import an existing SOP:** Organize steps from PDF, DOCX, Markdown, or images; explicit consent is required before using an external AI service.
+3. **Reuse an approved template:** Select an existing Protocol version and start another experiment.
+4. **Formalize a past experiment:** Turn an ad hoc Run into a new standard Protocol draft.
+5. **Compose modules manually:** Adjust steps, variables, dependencies, timing, and tool references in the editor.
+
+AI drafts must pass structural and parameter validation and receive human approval before they become approved versions. Publishing a new Protocol version does not change the evidence attached to historical Runs.
+
+### ② Give every step its own inputs, measurements, outputs, and dependencies
+
+A Protocol is more than a checklist. Each step can define:
+
+- **Inputs:** Numbers, units, choices, files, sample references, treatment conditions, and required-field rules.
+- **Records:** Actual start/end times, operator confirmation, measurements, deviations, and attachments.
+- **Outputs:** Measurements, calculations, images, or reports that can be bound to downstream steps.
+- **Execution rules:** Prerequisites, parallel steps, waits, conditional branches, repetition limits, human review, and reminders.
+
+Built-in step types include `action`, `wait`, `measure`, `calculate`, `image`, `record`, `decision`, `repeat`, `sample`, and `review`. Schema-driven forms reduce the need to build a custom screen for every experiment type.
+
+### ③ Perform traceable calculations without copying values between spreadsheets
+
+Approved Calculation Packs allow validated outputs from one step to become inputs for the next:
+
+`Absorbance → Standard curve → Protein concentration → Dilution/loading volume → Normalized result`
+
+Scientific calculations are designed to preserve a `CalculationTrace`: all inputs, dimensional checks, formulas, intermediate values, algorithm versions, QC results, execution environment, and outputs. The implementation provides inspection and relevant export paths for auditable calculation records. Changing parameters produces new results rather than silently overwriting history.
+
+The repository includes **BCA standard-curve, WB loading-volume, and WB normalization** Packs, together with synthetic test inputs and expected outputs that illustrate the approach. Researchers must still validate the actual fitting method and QC thresholds for their own experiments.
+
+### ④ Extend calculations with AI instead of rewriting the app for every method
+
+Need a dilution calculator, replicate summary, or another standard-curve workflow? Describe the inputs, formulas, QC checks, and outputs in natural language. AI can assemble a **Calculation Pack draft** from the available trusted operators. The draft must pass Schema validation, unit checks, operator-availability checks, synthetic golden cases, and human review before installation.
+
+- A new Pack can be reused across multiple Protocols and versioned independently.
+- Declarative configurations can drive both forms and calculation flows without requiring a Flutter code change for every workflow.
+- If a method requires an operator that does not exist, the system should report that limitation. **It must not execute arbitrary AI-generated Python as a trusted plugin.**
+- The community Pack catalog is designed around signatures and hashes; this is not an unrestricted executable plugin marketplace.
+
+### ⑤ Let AI understand images while keeping quantitative science reproducible
+
+The app does not bundle large local image-recognition or segmentation models. With permission, a multimodal AI service can help interpret an image, suggest ROIs, or propose an annotation plan. After researcher approval, deterministic tools perform calculations using the original pixel data.
+
+Four distinct use cases matter:
+
+- **Image description:** Describe, organize, and annotate existing images.
+- **Report extraction:** Suggest values from screenshots of instrument reports, followed by item-by-item human verification.
+- **Scientific quantification:** Approve ROIs, channels, and background regions before calculating from original pixels and retaining a trace.
+- **Presentation edits:** Produce separate crops, overlays, or edited images without presenting altered images as original quantitative evidence.
+
+The current scientific-quantification code supports **unsigned 8-bit or 16-bit grayscale/RGB PNG/TIFF images in supported layouts**. JPEG, alpha-bearing images, and unsupported TIFF/pixel formats cannot be sent directly through that quantitative path. Imaging behavior and mobile execution still require real-world validation.
+
+### ⑥ Manage actual raw research data with the built-in File Explorer
+
+Files are not just paths in a database. Lab Workspace maintains references between files, experiments, steps, samples, and analyses.
+
+- Browse, search, open files with the operating system, export, categorize, and inspect storage usage.
+- Distinguish **original assets / derived assets / reports** and inspect provenance from source to result.
+- Use content-addressed storage and deduplicate identical data to reduce wasted space.
+- Support a recycle bin, deletion-impact previews, reference-aware cleanup, and storage optimization.
+- When an original file must be removed, preserve references and missing-asset records so past results are not falsely represented as having accessible underlying evidence.
+- Provide on-demand integrity verification and optional external references for very large assets, reducing unnecessary data movement.
+
+**Integrity policy:** Every imported file receives a SHA-256 hash on initial import. Files at or below the configurable default threshold of **2 GiB** receive a full hash check on logical reads. Files above the threshold normally receive a lightweight metadata check, with full verification available on demand. **A quick metadata check is not equivalent to verifying content with SHA-256.**
+
+### ⑦ Work locally without hosting a server; optionally sync and back up across devices
+
+Basic use does not require Docker, a central server, a team account, or a permanent internet connection. Each device has its own SQLite database and managed file repository (Vault).
+
+Optional integrations include:
+
+- **OneDrive / S3-compatible object storage:** Exchange records and assets when needed, with configurable strategies for large-file transfer.
+- **Independent backup and restore:** Store database snapshots and file-object archives separately; do not confuse “sync completed” with “recoverable backup.”
+- **Optional remote encryption:** Choose plaintext or encrypted backups based on destination and file category. Recovery of encrypted data requires the key.
+- **Credential isolation:** Keep API keys, tokens, and other secrets in platform secure storage—not in ordinary experiment records or Packs.
+
+The application is not designed to sync a live SQLite database file directly. Cloud synchronization, conflict handling, encrypted recovery, and cross-device behavior still need validation in real environments.
+
+### ⑧ Plan experiments, run parallel timers, send reminders, and integrate Microsoft To Do
+
+Experiment steps can track estimated duration, actual start/end times, waiting states, advance reminders, and overdue alerts. Pending steps can be arranged along an experimental timeline based on dependencies, with a record of schedule changes.
+
+Local tasks can optionally integrate with **Microsoft To Do** through separate OAuth authorization and user-confirmed task submission. The source also includes import and conflict-review paths that are disabled by default. **A reminder firing does not mean a step is complete; checking off a To Do item does not substitute for confirming experimental results.** Background mobile reminders, reminders after closing the Windows application, and real Microsoft-account interactions still require validation.
+
+### ⑨ Extend laboratory capabilities with three AI Skills
+
+| Skill | Purpose | Repository location |
+| --- | --- | --- |
+| **Protocol Author** | Turns natural language, SOPs, or previous experiments into versioned Protocol drafts | [`skills/lab-workspace-protocol-author`](./skills/lab-workspace-protocol-author/) |
+| **Workflow Author** | Produces declarative Calculation Pack drafts from method descriptions and checks required operators and examples | [`skills/lab-workspace-workflow-author`](./skills/lab-workspace-workflow-author/) |
+| **Image Orchestrator** | Coordinates image understanding, ROI approval, controlled tool execution, and protection of original images | [`skills/lab-workspace-image-orchestrator`](./skills/lab-workspace-image-orchestrator/) |
+
+Configurable AI providers include OpenAI Responses, Chat Completions, and compatible services. Available features depend on whether a selected model supports structured output, vision, and tool calling. **Cloud AI calls require explicit authorization; when offline or without a compatible model, local documentation and supported deterministic calculations remain available.**
+
+---
+
+## Where can you use it?
+
+| Research scenario | How you would use Lab Workspace | Benefit |
+| --- | --- | --- |
+| **BCA / Western Blot** | Chain standard-curve and loading-volume calculations; record each step; link original images and quantitative evidence | Less copy-pasting, fewer unit errors, and traceable results |
+| **Immunofluorescence / tissue staining** | Reuse a staining Protocol; record reagents, incubation conditions, samples, and images | Clearer batch documentation and images linked to their experiments |
+| **Animal experiments / time-point sampling** | Track animal and sample IDs, groups, treatments, actual timestamps, and subsequent aliquots | Better sample provenance and multi-time-point scheduling |
+| **Cell experiments / concentration series** | Standardize treatment steps; record actual concentrations, exposure times, and measurements; reuse dilution calculations | Less repetitive setup and more reproducible conditions |
+| **Developing and refining SOPs** | Draft a workflow with natural language, approve v1.0, and issue v1.1 when methods change | Turn practical experience into standardized methods |
+| **Instrument data / research-image archives** | Retrieve originals, derivatives, and calculations by experiment or sample; inspect dependencies before deleting | Faster retrieval and lower risk of breaking provenance |
+| **Research across devices** | Organize experiments and files on a desktop, check tasks and steps on a phone, and sync selectively | Continue work across devices without requiring large uploads |
+
+These are **intended product scenarios**, not a claim that each experiment type already has a preinstalled, validated Protocol. The most inspectable examples currently in the repository concern BCA/WB and the generic workflow engine.
+
+## Guardrails for trustworthy research
+
+Lab Workspace aims to reduce repetitive work with AI—not to delegate scientific judgment to a model.
+
+| The system can assist with | What it must not do by default |
 | --- | --- |
-| Flutter | CI pins **3.47.7**; app manifest requires `>=3.38.1` |
-| Dart | `>=3.10.0 <4.0.0`, using a matching Flutter SDK |
-| Windows | Windows host and Visual Studio C++ desktop toolchain |
-| Android | Android SDK, Java 17; native project packages trusted Python |
-| iOS | macOS, Xcode, iOS toolchain; signed distribution needs Apple provisioning |
-| Python | Reference validation, tooling, trusted runners; contract checks need `jsonschema` |
+| Draft workflows from descriptions and SOPs | Invent critical experimental conditions and approve them automatically |
+| Calculate from approved formulas and inputs | Treat numbers in an AI-generated explanation as a real calculation trace |
+| Propose image lanes and ROIs | Use generatively modified images as original quantitative evidence without review |
+| Install validated, declarative Calculation Packs | Execute arbitrary code generated on the fly by a model |
+| Flag data conflicts and file risks | Silently overwrite previous results, original assets, or historical Protocols |
+| Connect to cloud models and services with consent | Upload an entire workspace or expose API keys without authorization |
 
-Versions come from local manifests and CI, not validation of every combination. Ignored `.tooling/` is a local cache, not a dependency automatically supplied with a clone.
+This is research-support software. **It does not guarantee experimental methods, statistical inferences, or scientific conclusions, and it has no claimed clinical or regulatory certification.**
 
-### Dependencies and startup
+## Current implementation status
 
-From the repository root, enter the client and preserve its lockfile:
+| Capability | What the repository contains | What still needs validation |
+| --- | --- | --- |
+| Native app and local core | Flutter app, shared Dart core, SQLite migrations, and UI source | Complete user workflows and runtime stability across platforms |
+| Protocol / Run / samples | Domain models, execution and versioning contracts, and related services | Real user workflows, step handoffs, and end-to-end execution |
+| Calculation Packs / traces | Built-in BCA/WB examples, primitives, approval, and tracing code | Scientific-method validation, platform consistency, and more real-world datasets |
+| AI / Skills / imaging | Provider integration, draft approval, image ROI and tracing code | Live service connectivity, real images, and platform-specific execution |
+| File Explorer / integrity | Import, references, integrity checks, deletion, and storage-management code | Large files, interruption recovery, and destructive-action scenarios |
+| Sync / backup / encryption | OneDrive/S3, snapshots, and recovery-related code | Live accounts, cross-device conflicts, independent restores, and security review |
+| Scheduling / notifications / To Do | Local tasks, native notification bridge, and Microsoft Graph integration code | Background notifications and real Microsoft-account verification |
 
-```powershell
-cd apps/lab_workspace
+The table reflects the repository's [V2.0 implementation status](./docs/implementation-status.md). **Passing static analysis is not the same as passing functional tests, real-device tests, or biomedical research validation.**
+
+## Getting started
+
+For now, developers should build from source and try the app with **synthetic or non-sensitive test data**. Do not use it as the sole repository for important research records.
+
+### Development environment
+
+| Platform | Basic requirements |
+| --- | --- |
+| General | Flutter (CI uses 3.47.7) and a matching Dart SDK |
+| Windows | Windows host and Visual Studio C++ desktop build tools |
+| Android | Android SDK, Java 17, and matching Android build tools |
+| iOS | macOS, Xcode, and iOS toolchain; signed distribution also requires Apple developer configuration |
+| Reference validation | Python and `jsonschema` for contract/example validation |
+
+### Run the Windows development client
+
+From the repository root:
+
+```bash
+git clone https://github.com/jung233/Lab_Workspace.git
+cd Lab_Workspace/apps/lab_workspace
 flutter doctor
 flutter pub get --enforce-lockfile
 flutter analyze --no-pub
 flutter run -d windows
 ```
 
-For Android, find a target with `flutter devices`, then use `flutter run -d <device-id>`. For iOS, first run `bash tooling/release/prepare_ios_python.sh` from the repository root on macOS, then resolve client dependencies and select a device. Preparation downloads and verifies a fixed CPython XCFramework.
+For Android, confirm the target using `flutter devices` and then run `flutter run -d <device-id>`. For iOS, first run `bash tooling/release/prepare_ios_python.sh` from the repository root to prepare and verify the pinned Python runtime, then proceed with the client build.
 
-### Static checks and reference validation
+These are **development commands—not a promise of a tested one-click installation**.
 
-From the shared core package directory:
+### Native builds and CI artifacts
 
-```powershell
-cd packages/lab_core
-dart pub get --enforce-lockfile
-dart analyze lib
+The repository includes a [Build native clients](./.github/workflows/build-native-clients.yml) GitHub Actions workflow defining build paths for Windows x64, an Android debug APK, and unsigned iOS Simulator artifacts. Downloadable artifacts are produced only after the relevant jobs succeed. The presence of a workflow file does not mean those builds have succeeded or are production-ready. An iOS Simulator build is not an installable IPA for physical devices.
+
+### Repository layout
+
+```text
+Lab_Workspace/
+├── apps/lab_workspace/          # Native Flutter client (Windows / Android / iOS)
+├── packages/lab_core/           # Shared Dart core: experiments, Protocols, calculations, data
+├── built_in_packs/              # BCA, WB loading, and normalization examples
+├── skills/                      # Protocol / Workflow / Image AI Skills
+├── contracts/                   # Versioned JSON Schemas and interface contracts
+├── python/                      # Trusted Python calculations and AI SDK bridge
+├── db/                          # Reference SQLite DDL and extensions
+├── examples/                    # Synthetic inputs, Protocols, and workflow examples
+├── docs/                        # System design, specifications, and implementation status
+├── tests/                       # Reference tests
+├── tooling/                     # Contract validation, static tooling, release scripts
+├── .github/workflows/           # Native client builds
+├── README.md                    # Chinese overview
+└── README.en.md                 # English overview
 ```
 
-Run the following from the **repository root**. Installing `jsonschema` requires a dependency source; afterward, reference checks do not require cloud services:
+The source repository is **not** your experiment Vault. Runtime data belongs in the operating system's application-data directory. **Do not synchronize a live Vault directory as though it were an ordinary cloud-drive folder.**
 
-```powershell
-python -m pip install jsonschema
-python tooling/validate_contracts.py
-python tooling/manifest_tool.py
-python -m unittest discover -s tests -v
-python skills/lab-workspace-protocol-author/scripts/validate_protocol.py examples/protocol/bca-to-wb.json
-python skills/lab-workspace-workflow-author/scripts/validate_workflow.py examples/bca/pipeline.json
-python skills/lab-workspace-image-orchestrator/scripts/validate_image_job.py examples/storage/image-review-plan.json
-```
+## Developer documentation and extensions
 
-These cover reference contracts and examples, not Flutter functionality, scientific method validation, devices, or cloud recovery. This README update did not launch the application or run these tests. Historical static checks are recorded in implementation status.
+- [Scope, decisions, and non-goals](./docs/00-scope-decisions.md)
+- [Architecture and directory structure](./docs/01-architecture-and-directory.md)
+- [Protocols, Runs, samples, and timing](./docs/02-domain-and-protocol.md)
+- [Calculation Packs, dynamic forms, and AI Skills](./docs/03-workflow-packs-and-skills.md)
+- [File Explorer, SHA-256, and storage cleanup](./docs/04-asset-explorer-integrity.md)
+- [Synchronization, backups, and optional encryption](./docs/05-sync-backup-optional-encryption.md)
+- [Calculation transparency, AI, Python, and imaging tools](./docs/06-python-ai-image-trace.md)
+- [Security, tests, and release requirements](./docs/07-security-release-tests.md)
+- [Internal APIs and interaction contracts](./docs/08-implementation-contracts.md)
+- [Technical references and platform constraints](./docs/09-verified-technology-references.md)
+- [Signed community declarative Pack catalog](./docs/community-pack-catalog-v1.md)
+- [Implementation status and pending validation](./docs/implementation-status.md)
+- [AI coding-agent development guidelines](./AGENTS.md)
 
-### Contribution and extension rules
+To extend the set of supported experiments, start with **Protocols / Calculation Packs / Skills** instead of building a custom interface for every method. New calculation operators and native platform dependencies still require dedicated development, testing, versioning, and user approval.
 
-1. **Read constraints:** Read [AGENTS.md](AGENTS.md) and `docs/00` through `docs/08` before changing domain/storage behavior.
-2. **Prefer declarative extensions:** Compose versioned Packs from existing primitives. New operators/native dependencies need trusted development, review, and release; reject unsupported operations and arbitrary model code.
-3. **Preserve compatibility:** Version schemas and provide migrations. Never modify approved Protocols or historical CalculationRuns in place.
-4. **Retain evidence:** Trace derived scientific results and expose “Show original calculation.” Quantification requires reviewed ROIs and immutable originals.
-5. **Preserve boundaries:** Obtain upload consent, inspect references before deletion, keep secrets in secure storage, and support plaintext/encrypted recovery.
-6. **Record validation:** Check changes appropriately; run required unittests after reference-code refactoring. Keep tests offline, use synthetic BCA/WB fixtures, preserve lockfiles, and record pending acceptance.
+## Frequently asked questions
 
-### Three independent Skills
+**Do I need to deploy a server or Docker?**  No. Lab Workspace is intended as a single-user, local-first native application, not a web service or multi-user ELN. Cloud AI, OneDrive/S3, and Microsoft To Do are all optional integrations.
 
-| Skill | Purpose |
-| --- | --- |
-| [Protocol Author](skills/lab-workspace-protocol-author/SKILL.md) | Natural language/SOP → Protocol draft |
-| [Workflow Author](skills/lab-workspace-workflow-author/SKILL.md) | Declarative Calculation Packs and supported-operator checks |
-| [Image Orchestrator](skills/lab-workspace-image-orchestrator/SKILL.md) | Image suggestions, upload consent, ROI review, trusted tools |
+**Can a single sentence generate any experiment or scientific algorithm?**  No. AI helps structure workflows and assemble available calculation primitives. Critical conditions require review, and methods beyond existing primitives must still be implemented and validated.
 
-Install each directory as a separate Skill; Skills do not bypass application approvals or primitive restrictions.
+**Do I have to configure an approved Protocol again every time?**  No. Create a new Run from an approved version whenever you repeat an experiment. Each Run has independent data, and changes to methods require a new Protocol version.
 
-## Builds and distribution
+**Can a result from one step automatically feed into another?**  Yes, through explicitly defined output bindings and calculation-input references in the Protocol. Only data that meets the requirements and has been approved may feed trusted downstream calculations.
 
-[Build native clients](.github/workflows/build-native-clients.yml) runs on pushes to `main` / `master` or manual dispatch. Successful platform jobs upload separate Actions artifacts retained for 14 days:
+**Will AI image analysis modify my original images?**  Originals are preserved as immutable assets. Suggested regions require review, and scientific quantification is based on unmodified source pixels. Edits, annotations, and reports are stored separately as derived assets.
 
-| Artifact | Contents | Intended use |
-| --- | --- | --- |
-| `Lab-Workspace-Windows-x64-unsigned` | Complete EXE and required Flutter/plugin DLL directory ZIP | Unsigned development output, not MSIX; retain the whole directory |
-| `Lab-Workspace-Android-debug-APK` | Debug APK with trusted Python | Development build, not store release |
-| `Lab-Workspace-iOS-simulator-unsigned` | Simulator `Runner.app` ZIP | Not an installable device IPA |
+**Can I rely on Lab Workspace as the only copy of important data?**  Not yet. Real-platform behavior, backup recovery, and cross-device operation still require validation. Keep independent, tested backups of research data.
 
-Equivalent local commands are `flutter build windows --release`, `flutter build apk --debug --target-platform android-arm64,android-x64`, and `flutter build ios --simulator --no-codesign`, from the client directory on the appropriate host. Prepare Python first for iOS. See [release tooling](tooling/release/README.md) and its scripts. A workflow definition alone is not successful-build evidence.
+**Is Lab Workspace free and open-source software?**  The repository is publicly accessible, but no root-level `LICENSE` file was found at the time of this documentation. Public access alone does not grant permission to modify, redistribute, or commercially use the code. Refer to the repository's future official license statement.
 
-## Documentation
+---
 
-Detailed engineering documents are mostly in Chinese; this README provides the English project overview and development entry point.
-
-| Document | Contents |
-| --- | --- |
-| [Complete development document](Lab_Workspace_V2.0_Complete_Development_Document.md) | Combined engineering specification and handoff |
-| [00 · Scope](docs/00-scope-decisions.md) | Scope, non-goals, frozen decisions |
-| [01 · Architecture](docs/01-architecture-and-directory.md) | Native architecture, planned modules, Vault |
-| [02 · Domain and Protocols](docs/02-domain-and-protocol.md) | Entities, state machines, execution, timing |
-| [03 · Packs and Skills](docs/03-workflow-packs-and-skills.md) | Declarative workflows, primitives, extensions |
-| [04 · Files and integrity](docs/04-asset-explorer-integrity.md) | SHA, references, deletion, GC |
-| [05 · Sync and backup](docs/05-sync-backup-optional-encryption.md) | Events, snapshots, encryption, recovery |
-| [06 · Python, AI, traces](docs/06-python-ai-image-trace.md) | Trusted execution, tools, original calculations |
-| [07 · Security and release](docs/07-security-release-tests.md) | Privacy, safety, milestones, acceptance |
-| [08 · Contracts](docs/08-implementation-contracts.md) | Interfaces, errors, settings, interactions |
-| [09 · Technical references](docs/09-verified-technology-references.md) | Official references and device boundaries |
-| [Implementation status](docs/implementation-status.md) | Source evidence, historical checks, runtime gaps |
-| [Community catalog protocol](docs/community-pack-catalog-v1.md) | Signing, publisher trust, distribution |
-
-Early specifications retain the target architecture and historical baseline. Read them alongside source/status; planned directories are not an inventory of actual files.
-
-## Boundaries and FAQ
-
-<details>
-<summary><strong>Do I need internet, an account, or a server?</strong></summary>
-
-The basic workspace is single-user and local-first, without a mandatory central backend, team account system, or Docker. AI, OneDrive/S3, and To Do are optional network integrations requiring their own configuration/authorization. Targets are Windows, Android, and iOS, not Web/PWA.
-
-</details>
-
-<details>
-<summary><strong>Can every experiment be added without code?</strong></summary>
-
-Existing primitives can express new workflows through Packs. Unknown operations, new scientific algorithms, and native dependencies still need trusted implementation/validation. Model-provided numbers or explanations are not verified exact scientific calculations.
-
-</details>
-
-<details>
-<summary><strong>Are sync and backups verified in real environments?</strong></summary>
-
-Services and restore authorization isolation exist in source. Cloud services, encrypted recovery, cross-device conflicts, mobile Python, and notifications still need runtime verification. Complete relevant platform and independent recovery acceptance before production research use.
-
-</details>
-
-<details>
-<summary><strong>Are scientific correctness, clinical compliance, and open-source licensing guaranteed?</strong></summary>
-
-The platform records, executes, and traces evidence; it does not automatically validate methods, fitting models, acquisition conditions, or conclusions, nor establish clinical/regulatory certification. AI transfers must follow institutional policy. There is currently no root LICENSE; do not assume an open-source redistribution license has been granted.
-
-</details>
+**The goal of Lab Workspace is simple: make experimental methods reusable, connect data across every step, and make the evidence behind every result accessible.**
