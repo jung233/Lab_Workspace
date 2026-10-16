@@ -7,7 +7,7 @@ allprojects {
 
 // Resolve this path before changing buildDirectory; keeping a Provider derived
 // from the same DirectoryProperty here makes Gradle evaluate it recursively.
-val relocatedBuild = rootProject.layout.buildDirectory.dir("../../build/android").get()
+val relocatedBuild = rootProject.layout.buildDirectory.dir("../../build").get()
 rootProject.layout.buildDirectory.set(relocatedBuild)
 subprojects {
     project.layout.buildDirectory.set(relocatedBuild.dir(project.name))
