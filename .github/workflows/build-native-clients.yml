@@ -1,0 +1,141 @@
+name: Build native clients
+
+on:
+  push:
+    branches:
+      - master
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-clients-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: Windows x64 executable
+    runs-on: windows-2022
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter 3.47.7
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.7
+          cache: true
+
+      - name: Resolve pinned dependencies
+        working-directory: apps/lab_workspace
+        run: flutter pub get --enforce-lockfile
+
+      - name: Build Windows client
+        working-directory: apps/lab_workspace
+        run: flutter build windows --release
+
+      - name: Package unpackaged Windows client
+        shell: pwsh
+        run: |
+          $releaseDirectory = Join-Path $env:GITHUB_WORKSPACE 'apps/lab_workspace/build/windows/x64/runner/Release'
+          $executable = Join-Path $releaseDirectory 'lab_workspace.exe'
+          if (-not (Test-Path -LiteralPath $executable)) {
+            throw "Windows executable was not produced at $executable"
+          }
+          $archive = Join-Path $env:RUNNER_TEMP 'Lab-Workspace-Windows-x64-unsigned.zip'
+          Compress-Archive -Path (Join-Path $releaseDirectory '*') -DestinationPath $archive -Force
+          "WINDOWS_ARTIFACT=$archive" >> $env:GITHUB_ENV
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Lab-Workspace-Windows-x64-unsigned
+          path: ${{ env.WINDOWS_ARTIFACT }}
+          if-no-files-found: error
+          retention-days: 14
+
+  android:
+    name: Android debug APK
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter 3.47.7
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.7
+          cache: true
+
+      - name: Resolve pinned dependencies
+        working-directory: apps/lab_workspace
+        run: flutter pub get --enforce-lockfile
+
+      - name: Build Android development APK
+        working-directory: apps/lab_workspace
+        run: flutter build apk --debug
+
+      - name: Verify APK artifact
+        run: test -s apps/lab_workspace/build/app/outputs/flutter-apk/app-debug.apk
+
+      - name: Upload Android artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Lab-Workspace-Android-debug-APK
+          path: apps/lab_workspace/build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+
+  ios-simulator:
+    name: iOS simulator app (unsigned)
+    runs-on: macos-26
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Select installed Xcode
+        run: sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
+
+      - name: Set up Flutter 3.47.7
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.7
+          cache: true
+
+      - name: Prepare verified CPython 3.15.0 iOS runtime
+        run: bash tooling/release/prepare_ios_python.sh
+
+      - name: Resolve pinned dependencies
+        working-directory: apps/lab_workspace
+        run: flutter pub get --enforce-lockfile
+
+      - name: Build unsigned iOS simulator app
+        working-directory: apps/lab_workspace
+        run: flutter build ios --simulator --no-codesign
+
+      - name: Verify and package simulator artifact
+        run: |
+          set -euo pipefail
+          app='apps/lab_workspace/build/ios/iphonesimulator/Runner.app'
+          test -d "$app"
+          test -f "$app/Info.plist"
+          ditto -c -k --sequesterRsrc --keepParent "$app" "$RUNNER_TEMP/Lab-Workspace-iOS-simulator-unsigned.zip"
+
+      - name: Upload iOS simulator artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Lab-Workspace-iOS-simulator-unsigned
+          path: ${{ runner.temp }}/Lab-Workspace-iOS-simulator-unsigned.zip
+          if-no-files-found: error
+          retention-days: 14

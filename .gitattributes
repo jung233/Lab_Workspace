@@ -1,0 +1,41 @@
+# Keep tracked source, configuration, schema, and documentation bytes stable
+# across Windows and Unix checkouts. Binary assets intentionally have no text
+# attribute and retain their original bytes.
+*.dart text eol=lf
+*.py text eol=lf
+*.pyi text eol=lf
+*.kt text eol=lf
+*.kts text eol=lf
+*.java text eol=lf
+*.swift text eol=lf
+*.m text eol=lf
+*.mm text eol=lf
+*.h text eol=lf
+*.c text eol=lf
+*.cc text eol=lf
+*.cpp text eol=lf
+*.gradle text eol=lf
+*.sh text eol=lf
+*.bash text eol=lf
+*.ps1 text eol=lf
+*.bat text eol=lf
+*.cmd text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.jsonc text eol=lf
+*.xml text eol=lf
+*.plist text eol=lf
+*.entitlements text eol=lf
+*.xcconfig text eol=lf
+*.pbxproj text eol=lf
+*.properties text eol=lf
+*.toml text eol=lf
+*.ini text eol=lf
+*.sql text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.csv text eol=lf
+*.lock text eol=lf
+*.gitignore text eol=lf
+.gitattributes text eol=lf

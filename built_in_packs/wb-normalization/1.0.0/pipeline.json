@@ -1,0 +1,25 @@
+{
+  "schema_version": "2.0",
+  "pack_id": "org.labworkspace.calc.wb-normalization",
+  "version": "1.0.0",
+  "kind": "calculation",
+  "status": "approved",
+  "title": "Western blot ROI normalization",
+  "inputs": [
+    {"key": "target_intensity", "kind": "decimal", "unit": "intensity", "required": true},
+    {"key": "reference_intensity", "kind": "decimal", "unit": "intensity", "required": true},
+    {"key": "calibrator_ratio", "kind": "decimal", "unit": "1", "required": true}
+  ],
+  "pipeline": [
+    {"step_id": "normalized", "op": "wb.normalize_ratio@1", "inputs": {"target_intensity": "$inputs.target_intensity", "reference_intensity": "$inputs.reference_intensity", "calibrator_ratio": "$inputs.calibrator_ratio"}, "params": {"method_warning": "Confirm that ROI selection, loading control, and calibrator follow the approved imaging procedure."}}
+  ],
+  "outputs": [
+    {"key": "sample_ratio", "from_ref": "$steps.normalized.ratio", "unit": "1"},
+    {"key": "relative_ratio", "from_ref": "$steps.normalized.relative_ratio", "unit": "1"}
+  ],
+  "quality_gates": [],
+  "tests": [
+    {"name": "synthetic_ratio", "inputs": {"target_intensity": "200", "reference_intensity": "100", "calibrator_ratio": "1"}, "expected": {"sample_ratio": "2", "relative_ratio": "2"}, "tolerance": {"sample_ratio": "0.0000001", "relative_ratio": "0.0000001"}}
+  ],
+  "review": {"approved_by_user": false, "warnings": ["Input intensities must come from explicitly approved ROIs on immutable original pixels. This pack does not detect or segment bands."]}
+}

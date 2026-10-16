@@ -1,0 +1,29 @@
+#include <windows.h>
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 2,0,0,1
+ PRODUCTVERSION 2,0,0,1
+ FILEFLAGSMASK 0x3fL
+ FILEFLAGS 0
+ FILEOS VOS__WINDOWS32
+ FILETYPE VFT_APP
+ FILESUBTYPE VFT2_UNKNOWN
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040904b0"
+    BEGIN
+      VALUE "CompanyName", "Lab Workspace\0"
+      VALUE "FileDescription", "Lab Workspace\0"
+      VALUE "FileVersion", "2.0.0.1\0"
+      VALUE "InternalName", "lab_workspace\0"
+      VALUE "OriginalFilename", "lab_workspace.exe\0"
+      VALUE "ProductName", "Lab Workspace\0"
+      VALUE "ProductVersion", "2.0.0.1\0"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x0409, 1200
+  END
+END

@@ -25,6 +25,7 @@ coverage/
 
 # Flutter / Dart generated state. Keep pubspec.lock and other lockfiles.
 .dart_tool/
+.tooling/
 .pub-cache/
 .pub/
 .flutter-plugins
@@ -44,6 +45,9 @@ Pods/
 DerivedData/
 xcuserdata/
 *.xcuserstate
+apps/lab_workspace/ios/Python.xcframework/
+apps/lab_workspace/ios/.python_xcframework_sha256
+apps/lab_workspace/ios/app/
 **/Flutter/ephemeral/
 **/Flutter/Generated.xcconfig
 **/Flutter/flutter_export_environment.sh

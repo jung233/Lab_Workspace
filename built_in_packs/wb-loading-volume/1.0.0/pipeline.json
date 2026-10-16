@@ -1,0 +1,28 @@
+{
+  "schema_version": "2.0",
+  "pack_id": "org.labworkspace.calc.wb-loading-volume",
+  "version": "1.0.0",
+  "kind": "calculation",
+  "status": "approved",
+  "title": "Western blot sample loading volume",
+  "inputs": [
+    {"key": "target_protein_mass", "kind": "decimal", "unit": "ug", "required": true},
+    {"key": "protein_concentration", "kind": "decimal", "unit": "ug/uL", "required": true},
+    {"key": "maximum_sample_volume", "kind": "decimal", "unit": "uL", "required": true}
+  ],
+  "pipeline": [
+    {"step_id": "sample_volume", "op": "math.divide@1", "inputs": {"numerator": "$inputs.target_protein_mass", "denominator": "$inputs.protein_concentration"}, "params": {}},
+    {"step_id": "volume_qc", "op": "data.qc_range@1", "inputs": {"x": "$steps.sample_volume.value", "low": "0", "high": "$inputs.maximum_sample_volume"}, "params": {"unit": "uL", "warning": "Calculated sample volume exceeds the declared maximum loading volume; manual review is required."}}
+  ],
+  "outputs": [
+    {"key": "sample_volume", "from_ref": "$steps.sample_volume.value", "unit": "uL"},
+    {"key": "within_maximum_volume", "from_ref": "$steps.volume_qc.in_range", "unit": null}
+  ],
+  "quality_gates": [
+    {"id": "volume_limit", "expression_ref": "$steps.volume_qc.in_range", "severity": "warn", "message": "Calculated volume exceeds the explicitly entered maximum loading volume."}
+  ],
+  "tests": [
+    {"name": "synthetic_twenty_micrograms_at_two_micrograms_per_microliter", "inputs": {"target_protein_mass": "20", "protein_concentration": "2", "maximum_sample_volume": "10"}, "expected": {"sample_volume": "10", "within_maximum_volume": true}, "tolerance": {"sample_volume": "0.0000001"}}
+  ],
+  "review": {"approved_by_user": false, "warnings": ["Confirm target mass, confirmed BCA concentration, and loading constraints from the local Western blot procedure."]}
+}

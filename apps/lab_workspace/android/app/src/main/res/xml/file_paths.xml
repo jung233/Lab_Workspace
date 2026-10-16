@@ -1,0 +1,3 @@
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <cache-path name="shared_temporary_assets" path="lab_workspace_open/" />
+</paths>

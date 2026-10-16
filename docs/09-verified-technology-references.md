@@ -10,5 +10,7 @@
 6. **SQLite Online Backup API**：<https://www.sqlite.org/backup.html>。在线生成一致性数据库快照，不直接同步正在运行的 SQLite + WAL 文件。
 7. **Microsoft Graph OneDrive uploadSession**：<https://learn.microsoft.com/en-us/graph/api/driveitem-createuploadsession?view=graph-rest-1.0>。支持分块大文件上传与断点续传；实施要遵守官方分片规则。
 8. **S3 Conditional Writes**：<https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-writes.html>。AWS S3 可借助条件写避免覆盖，S3 兼容实现差异要能力探测；不能把 ETag 当成通用 SHA-256。
+9. **Microsoft Graph To Do task delta**：<https://learn.microsoft.com/en-us/graph/api/todotask-delta?view=graph-rest-1.0> 与 <https://learn.microsoft.com/graph/delta-query-overview>。每页必须原样保存并复用完整 `@odata.nextLink` / `@odata.deltaLink`；todoTask delta 支持 `$select`、`$top`、`$expand`。通用 delta 文档要求不依赖响应顺序、允许同一实体重复出现，并要求在 410 / `syncStateNotFound` 后进行全量同步。
+10. **Microsoft Graph open extensions**：<https://learn.microsoft.com/en-us/graph/api/opentypeextension-get?view=graph-rest-1.0> 与 <https://learn.microsoft.com/en-us/graph/api/opentypeextension-post-opentypeextension?view=graph-rest-1.0>。To Do task 支持扩展，用于将本地 Task ID 作为远端相关性标记；扩展仅用于重试关联，不携带凭据。
 
 **审查与上线前未验证内容**：iOS 真机 Python 第三方包兼容性、不同 S3 供应商加密/分块与条件写能力、OneDrive 账户及文件夹限制、Windows 关闭 APP 后原生通知的精确性、移动端跨多设备事件合并的复杂性、远端加密/恢复的实际实现及安全审计。这些不是通过文档或单元测试就能宣称“已支持”的能力。

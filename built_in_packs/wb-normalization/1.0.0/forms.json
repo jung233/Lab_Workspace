@@ -1,0 +1,14 @@
+{
+  "schema_version": "2.0",
+  "title": "Western blot ratio normalization",
+  "fields": [
+    {"key": "target_intensity", "label": "Target ROI integrated intensity", "widget": "decimal", "unit": "intensity", "required": true},
+    {"key": "reference_intensity", "label": "Reference ROI integrated intensity", "widget": "decimal", "unit": "intensity", "required": true},
+    {"key": "calibrator_ratio", "label": "Confirmed calibrator ratio", "widget": "decimal", "unit": "1", "required": true}
+  ],
+  "outputs": [
+    {"key": "sample_ratio", "label": "Target/reference ratio", "unit": "1", "show_trace_button": true},
+    {"key": "relative_ratio", "label": "Ratio relative to calibrator", "unit": "1", "show_trace_button": true}
+  ],
+  "warning": "ROI data must be linked to a reviewed, immutable original image and ROI approval trace."
+}

@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labworkspace.local/contracts/sync-event-v3.schema.json",
+  "title": "sync-event-v3.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "3.0"},
+    "vault_id": {"type": "string", "minLength": 1},
+    "device_id": {"type": "string", "minLength": 1},
+    "seq": {"type": "integer", "minimum": 1},
+    "lamport": {"type": "integer", "minimum": 1},
+    "event_id": {"type": "string", "minLength": 1},
+    "command_id": {"type": "string", "minLength": 1},
+    "entity_kind": {"type": "string", "minLength": 1},
+    "entity_id": {"type": "string", "minLength": 1},
+    "base_revision": {"type": ["integer", "null"], "minimum": 1},
+    "event_type": {
+      "enum": [
+        "project.created", "project.updated", "experiment.created", "experiment.updated",
+        "group.created", "group.updated", "protocol.draft_saved", "protocol.approved",
+        "run.created", "run.sample_attached", "run.closed", "schedule.rebuilt",
+        "step.added", "step.started", "step.completed", "sample.created",
+        "treatment.recorded", "treatment.corrected", "measurement.recorded",
+        "measurement.corrected", "measurement.confirmed", "measurement.external_reviewed",
+        "task.created", "task.updated", "task.completed", "task.deleted",
+        "reminder.created", "reminder.delivery_updated",
+        "setting.updated", "calculation.completed", "calculation.failed",
+        "calculation_pack.installed", "AssetImported", "AssetTrashed", "AssetPurged",
+        "AssetRestored", "AssetBlobReleased", "AssetFolderCreated", "AssetAddedToFolder",
+        "AssetRemovedFromFolder", "AssetPurgeRecoveryRequired", "AssetIntegrityFailed",
+        "sync.target.created", "sync.target.updated", "sync.target.removed",
+        "BackupSnapshotCreated", "BackupSnapshotFailed", "BackupSnapshotStateChanged",
+        "BackupRestoreVerified"
+      ]
+    },
+    "action": {"enum": ["create", "patch", "append", "tombstone", "resolve"]},
+    "payload": {"type": "object"},
+    "sha_refs": {"type": "array", "items": {"type": "string", "pattern": "^[a-f0-9]{64}$"}},
+    "created_at_utc": {"type": "string", "format": "date-time"}
+  },
+  "required": [
+    "schema_version", "vault_id", "device_id", "seq", "lamport", "event_id",
+    "command_id", "entity_kind", "entity_id", "base_revision", "event_type",
+    "action", "payload", "sha_refs", "created_at_utc"
+  ]
+}

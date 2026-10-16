@@ -1,0 +1,15 @@
+cmake_minimum_required(VERSION 3.14)
+set(EPHEMERAL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/ephemeral")
+include(${EPHEMERAL_DIR}/generated_config.cmake)
+
+set(FLUTTER_LIBRARY "${EPHEMERAL_DIR}/flutter_windows.dll")
+set(FLUTTER_ICU_DATA_FILE "${EPHEMERAL_DIR}/icudtl.dat")
+set(PROJECT_BUILD_DIR "${PROJECT_DIR}/build/")
+
+add_library(flutter INTERFACE)
+target_include_directories(flutter INTERFACE "${EPHEMERAL_DIR}/cpp_client_wrapper/include")
+target_link_libraries(flutter INTERFACE "${FLUTTER_LIBRARY}.lib")
+add_library(flutter_wrapper_app INTERFACE)
+target_link_libraries(flutter_wrapper_app INTERFACE "${EPHEMERAL_DIR}/cpp_client_wrapper/lib/flutter_wrapper_app.lib")
+add_library(flutter_wrapper_plugin INTERFACE)
+target_link_libraries(flutter_wrapper_plugin INTERFACE "${EPHEMERAL_DIR}/cpp_client_wrapper/lib/flutter_wrapper_plugin.lib")

@@ -1,0 +1,6 @@
+add_executable(${BINARY_NAME} WIN32 "main.cpp" "flutter_window.cpp" "win32_window.cpp" "utils.cpp" "Runner.rc")
+apply_standard_settings(${BINARY_NAME})
+target_compile_definitions(${BINARY_NAME} PRIVATE "NOMINMAX")
+target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_link_libraries(${BINARY_NAME} PRIVATE flutter flutter_wrapper_app shell32)
+add_dependencies(${BINARY_NAME} flutter_assemble)

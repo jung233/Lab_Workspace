@@ -1,0 +1,16 @@
+{
+  "schema_version": "2.0",
+  "title": "BCA standard curve",
+  "fields": [
+    {"key": "standards", "label": "Standard concentration and absorbance table", "widget": "table", "required": true},
+    {"key": "sample_absorbance", "label": "Sample absorbance", "widget": "decimal", "unit": "AU", "required": true},
+    {"key": "blank_absorbance", "label": "Blank absorbance", "widget": "decimal", "unit": "AU", "required": true},
+    {"key": "dilution_factor", "label": "Sample dilution factor", "widget": "decimal", "unit": "1", "required": true}
+  ],
+  "outputs": [
+    {"key": "protein_concentration", "label": "Protein concentration", "unit": "mg/mL", "show_trace_button": true},
+    {"key": "r_squared", "label": "Linear fit R²", "unit": "1", "show_trace_button": true},
+    {"key": "within_standard_range", "label": "Within fitted range", "unit": null, "show_trace_button": true}
+  ],
+  "warning": "The BCA curve and dilution factor are visible in 展示原始计算. This reference pack does not replace kit-specific validation."
+}

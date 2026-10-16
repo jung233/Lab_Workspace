@@ -1,0 +1,14 @@
+{
+  "schema_version": "2.0",
+  "title": "Western blot loading volume",
+  "fields": [
+    {"key": "target_protein_mass", "label": "Target protein mass", "widget": "decimal", "unit": "ug", "required": true},
+    {"key": "protein_concentration", "label": "Confirmed protein concentration", "widget": "decimal", "unit": "ug/uL", "required": true},
+    {"key": "maximum_sample_volume", "label": "Maximum sample volume from procedure", "widget": "decimal", "unit": "uL", "required": true}
+  ],
+  "outputs": [
+    {"key": "sample_volume", "label": "Sample volume", "unit": "uL", "show_trace_button": true},
+    {"key": "within_maximum_volume", "label": "Within maximum volume", "unit": null, "show_trace_button": true}
+  ],
+  "warning": "This pack calculates target mass divided by protein concentration. It does not choose a target mass or total loading volume."
+}
