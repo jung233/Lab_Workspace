@@ -8,7 +8,7 @@ python_framework="${app}/ios/Python.xcframework"
 python_marker="${app}/ios/.python_xcframework_sha256"
 python_sha256='68e98ab35cc0643ba3a227a8c7768da45c2a5e67dbe1bc26598537e96680fd19'
 
-if [[ ! -d "${python_framework}" || ! -f "${python_framework}/Info.plist" || ! -f "${python_framework}/build/build_utils.sh" ]]; then
+if [[ ! -d "${python_framework}" || ! -f "${python_framework}/Info.plist" || ! -f "${python_framework}/build/utils.sh" ]]; then
   echo 'Verified CPython 3.15.0 iOS XCFramework is missing; run tooling/release/prepare_ios_python.sh on this Mac first.' >&2
   exit 1
 fi

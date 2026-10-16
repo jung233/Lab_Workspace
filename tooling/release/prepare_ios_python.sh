@@ -26,7 +26,7 @@ printf '%s  %s\n' "${sha256}" "${archive}" | shasum -a 256 -c
 tar -xzf "${archive}" -C "${extract_dir}"
 
 framework="$(find "${extract_dir}" -type d -name Python.xcframework -print -quit)"
-if [[ -z "${framework}" || ! -f "${framework}/Info.plist" || ! -f "${framework}/build/build_utils.sh" ]]; then
+if [[ -z "${framework}" || ! -f "${framework}/Info.plist" || ! -f "${framework}/build/utils.sh" ]]; then
   echo "Verified archive does not contain the expected Python.xcframework layout." >&2
   exit 1
 fi

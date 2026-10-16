@@ -15,6 +15,7 @@
 *.cc text eol=lf
 *.cpp text eol=lf
 *.gradle text eol=lf
+*.cmake text eol=lf
 *.sh text eol=lf
 *.bash text eol=lf
 *.ps1 text eol=lf

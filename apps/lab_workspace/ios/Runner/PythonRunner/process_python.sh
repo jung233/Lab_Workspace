@@ -15,7 +15,7 @@ if [[ ! -d "${python_xcframework}" ]]; then
   exit 1
 fi
 
-build_utils="${python_xcframework}/build/build_utils.sh"
+build_utils="${python_xcframework}/build/utils.sh"
 if [[ ! -f "${build_utils}" ]]; then
   echo "The Python XCFramework is missing its official build utilities: ${build_utils}"
   exit 1
@@ -41,6 +41,12 @@ cp -R "${python_source}/mobile" "${app_sources}/"
 
 # This script copies the matching CPython runtime and app code into the app
 # bundle and performs the iOS framework/signing metadata transformation.
+# Xcode's --no-codesign simulator mode leaves this value empty, while the
+# official helper still needs an identity to seal generated extension bundles.
+# Use an ad-hoc signature for those bundles; this is not a distribution identity.
+if [[ -z "${EXPANDED_CODE_SIGN_IDENTITY:-}" ]]; then
+  export EXPANDED_CODE_SIGN_IDENTITY="-"
+fi
 source "${build_utils}"
 cd "${PROJECT_DIR}"
 install_python "Python.xcframework" "app"
