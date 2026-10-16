@@ -4,13 +4,13 @@
 	classes = {};
 	objectVersion = 56;
 	objects = {
-		A10000000000000000000001 /* Project object */ = {isa = PBXProject; attributes = {BuildIndependentTargetsInParallel = YES; LastUpgradeCheck = 1600; TargetAttributes = {A10000000000000000000002 = {CreatedOnToolsVersion = 16.0; }; }; }; buildConfigurationList = A10000000000000000000020; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base, ); mainGroup = A10000000000000000000010; productRefGroup = A10000000000000000000011; projectDirPath = ""; projectRoot = ""; targets = (A10000000000000000000002, ); };
-		A10000000000000000000002 /* Runner */ = {isa = PBXNativeTarget; buildConfigurationList = A10000000000000000000021; buildPhases = (A10000000000000000000030, A10000000000000000000031, A10000000000000000000032, A10000000000000000000033, A1000000000000000000004B, A1000000000000000000004F, A10000000000000000000034, ); buildRules = (); dependencies = (); name = Runner; productName = Runner; productReference = A10000000000000000000012; productType = "com.apple.product-type.application"; };
-		A10000000000000000000010 /* Main group */ = {isa = PBXGroup; children = (A10000000000000000000013, A10000000000000000000014, A10000000000000000000015, A10000000000000000000011, ); sourceTree = "<group>"; };
+		97C146E61CF9000F007C117D /* Project object */ = {isa = PBXProject; attributes = {BuildIndependentTargetsInParallel = YES; LastUpgradeCheck = 1600; TargetAttributes = {97C146ED1CF9000F007C117D = {CreatedOnToolsVersion = 16.0; }; }; }; buildConfigurationList = A10000000000000000000020; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base, ); mainGroup = A10000000000000000000010; productRefGroup = A10000000000000000000011; projectDirPath = ""; projectRoot = ""; targets = (97C146ED1CF9000F007C117D, ); };
+		97C146ED1CF9000F007C117D /* Runner */ = {isa = PBXNativeTarget; buildConfigurationList = A10000000000000000000021; buildPhases = (A10000000000000000000030, 97C146EB1CF9000F007C117D, A10000000000000000000032, A10000000000000000000033, A1000000000000000000004B, A1000000000000000000004F, A10000000000000000000034, ); buildRules = (); dependencies = (); name = Runner; productName = Runner; productReference = A10000000000000000000012; productType = "com.apple.product-type.application"; };
+		A10000000000000000000010 /* Main group */ = {isa = PBXGroup; children = (A10000000000000000000013, 9740EEB11CF90186004384FC, A10000000000000000000015, A10000000000000000000011, ); sourceTree = "<group>"; };
 		A10000000000000000000011 /* Products */ = {isa = PBXGroup; children = (A10000000000000000000012, ); name = Products; sourceTree = "<group>"; };
 		A10000000000000000000012 /* Runner.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Runner.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A10000000000000000000013 /* Runner group */ = {isa = PBXGroup; children = (A10000000000000000000016, A10000000000000000000017, A10000000000000000000018, A10000000000000000000049, ); path = Runner; sourceTree = "<group>"; };
-		A10000000000000000000014 /* Flutter group */ = {isa = PBXGroup; children = (A10000000000000000000019, A1000000000000000000001A, A1000000000000000000001B, ); path = Flutter; sourceTree = "<group>"; };
+		9740EEB11CF90186004384FC /* Flutter */ = {isa = PBXGroup; children = (A10000000000000000000019, A1000000000000000000001A, A1000000000000000000001B, ); path = Flutter; sourceTree = "<group>"; };
 		A10000000000000000000015 /* Frameworks */ = {isa = PBXGroup; children = (A1000000000000000000004E, ); name = Frameworks; sourceTree = "<group>"; };
 		A10000000000000000000016 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		A10000000000000000000017 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -25,7 +25,7 @@
 		A1000000000000000000004C /* Python.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = A1000000000000000000004E; };
 		A1000000000000000000004D /* Python.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = A1000000000000000000004E; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		A10000000000000000000030 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A1000000000000000000001D, A10000000000000000000046, ); runOnlyForDeploymentPostprocessing = 0; };
-		A10000000000000000000031 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (A1000000000000000000004C, ); runOnlyForDeploymentPostprocessing = 0; };
+		97C146EB1CF9000F007C117D /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (A1000000000000000000004C, ); runOnlyForDeploymentPostprocessing = 0; };
 		A10000000000000000000032 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (A1000000000000000000001E, ); runOnlyForDeploymentPostprocessing = 0; };
 		A10000000000000000000033 /* Flutter build */ = {isa = PBXShellScriptBuildPhase; buildActionMask = 2147483647; files = (); inputPaths = (); outputPaths = (); runOnlyForDeploymentPostprocessing = 0; shellPath = /bin/sh; shellScript = "\"$FLUTTER_ROOT/packages/flutter_tools/bin/xcode_backend.sh\" build"; };
 		A10000000000000000000034 /* Flutter embed */ = {isa = PBXShellScriptBuildPhase; buildActionMask = 2147483647; files = (); inputPaths = (); outputPaths = (); runOnlyForDeploymentPostprocessing = 0; shellPath = /bin/sh; shellScript = "\"$FLUTTER_ROOT/packages/flutter_tools/bin/xcode_backend.sh\" embed_and_thin"; };
@@ -44,5 +44,5 @@
 		A1000000000000000000004E /* Python.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = Python.xcframework; sourceTree = "<group>"; };
 		A1000000000000000000004F /* Embed Frameworks */ = {isa = PBXCopyFilesBuildPhase; buildActionMask = 2147483647; dstPath = ""; dstSubfolderSpec = 10; files = (A1000000000000000000004D, ); name = "Embed Frameworks"; runOnlyForDeploymentPostprocessing = 0; };
 	};
-	rootObject = A10000000000000000000001;
+	rootObject = 97C146E61CF9000F007C117D;
 }

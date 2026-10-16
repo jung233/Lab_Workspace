@@ -1,6 +1,6 @@
 #include "utils.h"
-#include <shellapi.h>
 #include <windows.h>
+#include <shellapi.h>
 
 std::vector<std::string> GetCommandLineArguments() {
   int count = 0;
