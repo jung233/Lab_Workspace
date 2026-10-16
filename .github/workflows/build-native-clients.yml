@@ -83,7 +83,7 @@ jobs:
 
       - name: Build Android development APK
         working-directory: apps/lab_workspace
-        run: flutter build apk --debug
+        run: flutter build apk --debug --target-platform android-arm64,android-x64
 
       - name: Verify APK artifact
         run: test -s apps/lab_workspace/build/app/outputs/flutter-apk/app-debug.apk

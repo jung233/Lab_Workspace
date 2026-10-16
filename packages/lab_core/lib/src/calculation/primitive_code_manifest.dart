@@ -47,6 +47,6 @@ const iosPythonRunnerSourceSha256 =
 const androidPythonPreparationSourceSha256 =
     '7c310469e9c40886151e6a86aadbf0a7e25b63a25074fe07cd876084fea36ff6';
 const iosPythonPreparationSourceSha256 =
-    '471052b60265ca398aa8bd30bf4a3afbdc53064b6b1f3a5b669a7588516f5aa0';
+    'f82b6f7687a42d53765f7135c5094ae73f7fb058be213e8a48b5a62415309ae6';
 
 const calculationSourceManifestVersion = 'lab-workspace-calculation-sources-v1';
