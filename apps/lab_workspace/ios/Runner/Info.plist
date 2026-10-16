@@ -19,7 +19,6 @@
   <key>UISupportedInterfaceOrientations~ipad</key>
   <array><string>UIInterfaceOrientationPortrait</string><string>UIInterfaceOrientationPortraitUpsideDown</string><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>
   <key>CADisableMinimumFrameDurationOnPhone</key><true/>
-  <key>UIApplicationSceneManifest</key>
-  <dict><key>UIApplicationSupportsMultipleScenes</key><false/></dict>
+  <key>UIMainStoryboardFile</key><string>Main</string>
 </dict>
 </plist>
