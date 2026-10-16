@@ -581,4 +581,4 @@ final class CalculationPackValidator {
       }
     }
   }
-}\n
+}

@@ -711,4 +711,4 @@ final class _TodoDeltaBatch {
 
 extension _FirstRowOrNull on Iterable<DbRow> {
   DbRow? get firstOrNull => isEmpty ? null : first;
-}\n
+}

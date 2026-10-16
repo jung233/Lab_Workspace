@@ -65,4 +65,4 @@ object CalculationPythonRunner {
                 .toString()
         }
     }
-}\n
+}

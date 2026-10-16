@@ -30,6 +30,9 @@
 *.entitlements text eol=lf
 *.xcconfig text eol=lf
 *.pbxproj text eol=lf
+*.xcscheme text eol=lf
+*.xcworkspacedata text eol=lf
+*.xcsettings text eol=lf
 *.properties text eol=lf
 *.toml text eol=lf
 *.ini text eol=lf

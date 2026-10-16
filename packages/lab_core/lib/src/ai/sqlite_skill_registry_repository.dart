@@ -78,4 +78,4 @@ final class SqliteSkillRegistryRepository implements SkillRegistryRepository {
       state: SkillState.values.byName(row['state'] as String),
     );
   }
-}\n
+}

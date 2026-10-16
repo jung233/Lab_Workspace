@@ -135,4 +135,4 @@ final class DartCalculationExecutor implements CalculationExecutor {
 
   @override
   Future<bool> requestCancel(CalculationId calculationId) async => false;
-}\n
+}

@@ -14,4 +14,4 @@ plugins.withId("com.chaquo.python") {
             }
         }
     }
-}\n
+}

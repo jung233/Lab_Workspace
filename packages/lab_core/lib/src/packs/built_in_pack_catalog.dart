@@ -328,4 +328,4 @@ const Map<String, Object?> _wbNormalizationForms = {
     {'key': 'relative_ratio', 'label': 'Ratio relative to calibrator', 'unit': '1', 'show_trace_button': true},
   ],
   'warning': 'ROI data must be linked to a reviewed, immutable original image and ROI approval trace.',
-};\n
+};

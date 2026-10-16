@@ -10,7 +10,7 @@
 /// `packages/lab_core/lib/src/calculation/unit_registry.dart`,
 /// `packages/lab_core/lib/src/domain/json_value.dart`.
 const dartCalculationPrimitiveCodeSha256 =
-    'db0dff600ebdc58049c38eec84a87368dc12dad99c032fae23591a9f1d9ffcae';
+    '8dee4f6b6146e384a218d77edb3f23aa5832d184d99d06282e914ac40c41021f';
 
 /// Original-image ROI arithmetic source bundle, independently pinned from
 /// generic Pack primitives.
@@ -32,20 +32,20 @@ const pythonCalculationPrimitiveCodeSha256 =
 /// `packages/lab_core/lib/src/calculation/calculation_executor.dart`,
 /// `packages/lab_core/lib/src/calculation/calculation_service.dart`.
 const dartCalculationRuntimeSourceSha256 =
-    'cb1d092454293d6b2de88f20afebae8cd424d30c86b4555c773e26ae0eedf0a7';
+    '4a55638243cb7255b5a481e222f1691346d7b85dc592714df9ce142088ac68a2';
 
 /// The following runtime provenance hashes are independent of the primitive
 /// bundle and identify trusted Python entry/native/build source bundles.
 const pythonDesktopEntrySourceSha256 =
     '937dad89121e45beeb8295f23466d3c528a635dccd03fcb07a4fd5381aab6da3';
 const pythonMobileEntrySourceSha256 =
-    '3da7b53970c439a147e01cc9dcff68fa40632760849705cfa48ea57ca18f846c';
+    '109762a4ec578b9b5e3459aea0e21b867d9a5a950046627326da0f5d92e6744b';
 const androidPythonRunnerSourceSha256 =
-    '4fae4fcb9f3054f89b880e2a14839d67b9cbaadb4ce5d4388b18b305b8534cd3';
+    '2bb2cd7151a8de1bc7e5e2c21c6a2185d0fc0628286d99427cf0c005fd23bf5f';
 const iosPythonRunnerSourceSha256 =
     '2526de119016b6c3bbaf92180911bf1355e0da21c4ae70e468f844235a589444';
 const androidPythonPreparationSourceSha256 =
-    'b64edb82e7b8e3b3ea6f05e60fd43d58e02178cfa05f5f30ddef4b10d0d7c2c2';
+    'fc4f2bbbd063a8004bd4b12b7e7dc0e910ffee3197efda7582cbcb9c21b3539f';
 const iosPythonPreparationSourceSha256 =
     'c841478e32836eaaa15de9a1dd4c6bfd61a203e370febfa7992903be9bf95b6a';
 

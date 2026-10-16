@@ -186,4 +186,4 @@ String calculationPackContentSha256(Map<String, Object?> document) {
   final review = canonicalDocument['review'];
   if (review is Map) review['approved_by_user'] = false;
   return sha256.convert(utf8.encode(canonicalJson(canonicalDocument))).toString();
-}\n
+}

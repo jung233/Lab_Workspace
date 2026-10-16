@@ -22,7 +22,7 @@ PYTHON_DESKTOP_ENTRY_SOURCE_SHA256 = (
     "937dad89121e45beeb8295f23466d3c528a635dccd03fcb07a4fd5381aab6da3"
 )
 PYTHON_MOBILE_ENTRY_SOURCE_SHA256 = (
-    "3da7b53970c439a147e01cc9dcff68fa40632760849705cfa48ea57ca18f846c"
+    "109762a4ec578b9b5e3459aea0e21b867d9a5a950046627326da0f5d92e6744b"
 )
 
 # Native runner bundles are separate from Python numeric primitives/entry code.
@@ -32,7 +32,7 @@ PYTHON_MOBILE_ENTRY_SOURCE_SHA256 = (
 # ``apps/lab_workspace/ios/Runner/PythonRunner/LabCalculationPythonRunner.h``
 # then ``apps/lab_workspace/ios/Runner/PythonRunner/LabCalculationPythonRunner.m``.
 ANDROID_NATIVE_RUNNER_SOURCE_SHA256 = (
-    "4fae4fcb9f3054f89b880e2a14839d67b9cbaadb4ce5d4388b18b305b8534cd3"
+    "2bb2cd7151a8de1bc7e5e2c21c6a2185d0fc0628286d99427cf0c005fd23bf5f"
 )
 IOS_NATIVE_RUNNER_SOURCE_SHA256 = (
     "2526de119016b6c3bbaf92180911bf1355e0da21c4ae70e468f844235a589444"
@@ -45,7 +45,7 @@ IOS_NATIVE_RUNNER_SOURCE_SHA256 = (
 # ``tooling/release/prepare_ios_python.sh``, then
 # ``apps/lab_workspace/ios/Runner.xcodeproj/project.pbxproj``.
 ANDROID_PREPARATION_SOURCE_SHA256 = (
-    "b64edb82e7b8e3b3ea6f05e60fd43d58e02178cfa05f5f30ddef4b10d0d7c2c2"
+    "fc4f2bbbd063a8004bd4b12b7e7dc0e910ffee3197efda7582cbcb9c21b3539f"
 )
 IOS_PREPARATION_SOURCE_SHA256 = (
     "c841478e32836eaaa15de9a1dd4c6bfd61a203e370febfa7992903be9bf95b6a"

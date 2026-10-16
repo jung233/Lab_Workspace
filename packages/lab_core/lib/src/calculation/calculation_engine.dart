@@ -371,4 +371,4 @@ final class CalculationExecutionResult {
 
   final Map<String, Object?> outputs;
   final CalculationTrace trace;
-}\n
+}

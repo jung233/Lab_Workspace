@@ -658,4 +658,4 @@ final class CalculationPackRegistry {
       );
 }
 
-DateTime _utcNow() => DateTime.now().toUtc();\n
+DateTime _utcNow() => DateTime.now().toUtc();

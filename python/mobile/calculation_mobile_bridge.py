@@ -300,4 +300,4 @@ def handle_json(request_json: str, runtime_target: str | None = None) -> str:
             "id": request_id,
             "error": {"code": -32603, "message": "Trusted calculation runtime failed"},
         }
-    return json.dumps(response, ensure_ascii=False, separators=(",", ":"), allow_nan=False)\n
+    return json.dumps(response, ensure_ascii=False, separators=(",", ":"), allow_nan=False)

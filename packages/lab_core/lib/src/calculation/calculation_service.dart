@@ -1113,4 +1113,4 @@ final class _ActiveCalculation {
       );
 }
 
-DateTime _utcNow() => DateTime.now().toUtc();\n
+DateTime _utcNow() => DateTime.now().toUtc();

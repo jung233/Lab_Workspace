@@ -1,1 +1,1 @@
-"""Trusted mobile entry points for the bundled calculation runtime."""\n
+"""Trusted mobile entry points for the bundled calculation runtime."""
